@@ -2,6 +2,10 @@
 1. can execute Piet on CUI ! (high speed !! big png file supported !!)
 2. can edit Piet on CUI ! (Cool!!)
 
+![](./images/iikanji.gif)
+
+![](./images/exec.png)
+
 # install
 to execute `viet` command ...
 ```
