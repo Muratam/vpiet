@@ -6,6 +6,9 @@ import util
 import curse
 import pietcore
 
+# make graph
+# show index
+
 type
   VietState = enum Normal
   Rect = tuple[l,t,r,b:int]
@@ -16,10 +19,15 @@ type
     pos:tuple[x,y:int]
     term:tuple[w,h:int]
     log:string
+    pMap:PietMap
     core:PietCore
 
 proc `iw`(self:Viet):int = self.colorMap.width
 proc `ih`(self:Viet):int = self.colorMap.height
+
+proc reAnalyze(self:var Viet) =
+  self.pMap = self.colorMap.newPietMap()
+  self.core = self.pMap.newPietCore()
 
 proc newViet(filename:string) :Viet=
   new(result)
@@ -29,20 +37,19 @@ proc newViet(filename:string) :Viet=
   result.pos = (0,0)
   result.term = terminalSize()
   result.log = ""
-  result.core = newPietCore(result.colorMap.newPietMap())
+  result.reAnalyze()
 
 proc drawImage(self:var Viet,box:Rect) =
   # WARN: 前の描画結果を利用して高速化可能?
-  # let trans = (c:int) => (if c < 100: 0 elif c < 220: 2 else: 5)
-  let trans = (c:uint8) => (c.int * 6) div 256
+  const trans = (c:uint8) => (c.int * 6) div 256
   for y in 0..< min(self.ih,box.b - box.t):
     var currentColor = ""
     setCursorPos(box.l,box.t + y)
-    stdout.write toForeColor(getGray24(12))
+    stdout.write getGray24(12).toForeColor()
     for x in 0..< min(self.iw,box.r - box.l):
       let (x2,y2) = (x + self.pos.x,y + self.pos.y)
       let (r,g,b) = self.colorMap[x2,y2].toRGB()
-      let color = toBackColor(getColor6(trans(r),trans(g),trans(b)))
+      let color = getColor6(trans(r),trans(g),trans(b)).toBackColor()
       if color != currentColor :
         currentColor = color
         stdout.write "{color}".fmt
@@ -50,7 +57,7 @@ proc drawImage(self:var Viet,box:Rect) =
   stdout.write "{endAll}".fmt
 
 proc drawLabel(self: var Viet,drawYPos:int) =
-  let defaultBackColor = toBackColor(getGray24(6))
+  let defaultBackColor = getGray24(6).toBackColor()
   block: # write default backcolor
     setCursorPos(0,drawYPos)
     let content = " " * self.term.w
@@ -59,11 +66,11 @@ proc drawLabel(self: var Viet,drawYPos:int) =
   var label = ""
   case self.state:
     of Normal: # print "NORMAL"
-      let back = toBackColor(getColor6(0,4,1))
-      let fore = toForeColor(getColor6(0,2,0))
+      let back = getColor6(0,4,1).toBackColor()
+      let fore = getColor6(0,2,0).toForeColor()
       label &= "{back}{fore}{toBold} NORMAL {endAll}".fmt
   block: # print filename
-    let fore = toForeColor(getGray24(18))
+    let fore = getGray24(18).toForeColor()
     let rightContent = fmt "x:{self.pos.x} y:{self.pos.y} w:{self.iw} h:{self.ih}"
     let content = self.filename & "\t | " & rightContent
     label &= "{defaultBackColor}{fore} {content}".fmt
@@ -131,7 +138,7 @@ if isMainModule:
   if files.len() > 1 : exitWithHelp("Multiple Input Files !!")
   if not files[0].endsWith(".png"): exitWithHelp("Illegal File Type")
   if "-e" in params: # Vietは起動せずにPietを実行
-    var core = newPietCore(files[0].newPietMap())
+    var core = files[0].newPietMap().newPietCore()
     core.exec()
   else:
     var viet = newViet(files[0])
