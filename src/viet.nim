@@ -17,6 +17,7 @@ type
     filename:string
     colorMap:Matrix[PietColor]
     pos:tuple[x,y:int]
+    scroll:tuple[x,y:int]
     term:tuple[w,h:int]
     log:string
     pMap:PietMap
@@ -35,25 +36,52 @@ proc newViet(filename:string) :Viet=
   result.filename = filename
   result.state = Normal
   result.pos = (0,0)
+  result.scroll = (0,0)
   result.term = terminalSize()
   result.log = ""
   result.reAnalyze()
 
 proc drawImage(self:var Viet,box:Rect) =
-  # WARN: 前の描画結果を利用して高速化可能?
+  template updateScroll() =
+    if self.pos.y + 1 >= box.b + self.scroll.y: self.scroll.y += 1
+    if self.pos.y + 1 <  box.t + self.scroll.y: self.scroll.y -= 1
+    if self.pos.x + 1 >= box.r + self.scroll.x: self.scroll.x += 1
+    if self.pos.x + 1 <  box.l + self.scroll.x: self.scroll.x -= 1
+  updateScroll()
   const trans = (c:uint8) => (c.int * 6) div 256
+  proc toRealPos(self:var Viet,x,y:int):tuple[x,y:int] =
+    return (x + self.scroll.x,y + self.scroll.y)
+  proc getIndex(self:var Viet,x,y:int): int =
+    let (x2,y2) = self.toRealPos(x,y)
+    return self.pMap.indexMap[x2,y2]
+
+  let (vx,vy) = (self.pos.x - self.scroll.x, self.pos.y - self.scroll.y)
+  let vIndex = self.getIndex(vx,vy)
+  self.log &= fmt"i:{vIndex} x:{vx} y:{vy} 0:{self.pMap.indexMap[0,0]}"
+
+  proc drawXY(self:var Viet,x,y:int,currentColor: var string) : string =
+    result = ""
+    let (x2,y2) = self.toRealPos(x,y)
+    let (r,g,b) = self.colorMap[x2,y2].toRGB()
+    let index = self.getIndex(x,y)
+    let color = getColor6(trans(r),trans(g),trans(b)).toBackColor()
+    if color != currentColor :
+      currentColor = color
+      result &= "{color}".fmt
+    if (x,y) == (vx,vy) : return result & "@"
+    for epxy in self.pMap.indexToEndPos[vIndex]:
+      let (epx,epy) = epxy
+      if (epx.int,epy.int) != (x2,y2): continue
+      return result & "*"
+    if index == vIndex : return result & "."
+    return result & " "
+  var currentColor = ""
   for y in 0..< min(self.ih,box.b - box.t):
-    var currentColor = ""
+    currentColor = ""
     setCursorPos(box.l,box.t + y)
     stdout.write getGray24(12).toForeColor()
     for x in 0..< min(self.iw,box.r - box.l):
-      let (x2,y2) = (x + self.pos.x,y + self.pos.y)
-      let (r,g,b) = self.colorMap[x2,y2].toRGB()
-      let color = getColor6(trans(r),trans(g),trans(b)).toBackColor()
-      if color != currentColor :
-        currentColor = color
-        stdout.write "{color}".fmt
-      stdout.write " ".fmt
+      stdout.write self.drawXY(x,y,currentColor)
   stdout.write "{endAll}".fmt
 
 proc drawLabel(self: var Viet,drawYPos:int) =
@@ -102,9 +130,8 @@ proc update(self:var Viet,keys:seq[char]) : tuple[waitNext:bool]=
     elif keyseq == @['\e','[','D']: self.pos.x -= 1
     elif keyseq == @['\e','[','B']: self.pos.y += 1
     elif keyseq == @['\e','[','A']: self.pos.y -= 1
-  self.pos.x = self.pos.x.min(self.iw - self.term.w+2).max(0).min(self.iw-1)
-  self.pos.y = self.pos.y.min(self.ih - self.term.h+2).max(0).min(self.ih-1)
-  # self.log &= " key:[" & keys.mapIt(it.int).join(",") & "] "
+  self.pos.x = self.pos.x.max(0).min(self.iw-1)
+  self.pos.y = self.pos.y.max(0).min(self.ih-1)
 
 proc updateTerminal(self:var Viet, curse:var Curse) =
   # update する

@@ -79,6 +79,17 @@ proc map*[T,S](a:EightDirection[T],fn:proc(t:T):S) : EightDirection[S] =
   result[5] = fn(a[5])
   result[6] = fn(a[6])
   result[7] = fn(a[7])
+iterator items*[T](a:var EightDirection[T]): var T =
+  yield a[0]
+  yield a[1]
+  yield a[2]
+  yield a[3]
+  yield a[4]
+  yield a[5]
+  yield a[6]
+  yield a[7]
+
+
 type Pos* = tuple[x,y:int32]
 proc `+`*(a,b:Pos) : Pos = (a.x + b.x, a.y + b.y)
 const PosUp* = (0.int32,-1.int32)
