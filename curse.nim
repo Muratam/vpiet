@@ -2,7 +2,7 @@ import sequtils,strutils,algorithm,math,future,macros,strformat
 import os,times
 import random
 import terminal,termios,os,posix
-from ncurses as nc import nil
+from libs.ncurses.ncurses as nc import nil
 proc timeout(t:int): void {.cdecl, discardable, importc: "timeout", dynlib: nc.libncurses.}
 
 proc code*[T](key:T) : string = fmt "\e[{key}m"
