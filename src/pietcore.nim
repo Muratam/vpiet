@@ -3,10 +3,6 @@ import os,times
 import pietmap
 import util
 import strscans
-# Piet の実装 (htmlserver.pngの200やfizzbuzzがうまくいかない / Piet08ではない / roll ...)
-# joisino並行二分木高速実行 (Roll 速度が気になる)
-# 静的解析高速実行 (DP0 ---Orders--- LR8 のように固定遷移図を生成出来れば ?(PTR/SWT命令の所が分岐点になりそう))
-# CUIエディタ
 
 type
   CC = enum CCRight = false,CCLeft = true

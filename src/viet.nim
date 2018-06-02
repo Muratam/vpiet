@@ -116,11 +116,6 @@ proc exitWithHelp(errorLog:string = "") =
     $ viet {getGray24(16).toForeColor()}<filename>{endAll}
   {toDim}execute png as Piet{endAll}
     $ viet {toBold}-e{endAll} {getGray24(16).toForeColor()}<filename>{endAll}
-
-  -- TODO: EDITABLE LIKE VIM--------------------
-  NORMAL: <- ESC or C-c で
-    hjkl ←↓↑→ キーで移動
-  INSERT: NORMAL から i で
   """.fmt().replace("\n  ","\n").strip()
   if errorLog.len > 0:
     echo "{getColor6(5,1,1).toForeColor()}Error : {errorLog}{endAll}".fmt
