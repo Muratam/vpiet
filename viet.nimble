@@ -3,7 +3,7 @@ version       = "0.1.0"
 author        = "murata"
 description   = "Veaaaa Piet"
 license       = "MIT"
-srcDir        = "."
+srcDir        = "src"
 bin           = @["viet"]
 
 # Dependencies
