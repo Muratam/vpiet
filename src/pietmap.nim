@@ -137,7 +137,6 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
   var endPos : EndPos
   var blockSize = 0
 
-
   proc updateEndPos(x,y:int32) =
     if y < endPos.upR.y : endPos.upR = (x,y)
     elif y == endPos.upR.y and x > endPos.upR.x : endPos.upR = (x,y)

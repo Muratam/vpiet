@@ -5,8 +5,8 @@ import util
 import strscans
 
 type
-  CC = enum CCRight = false,CCLeft = true
-  DP = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
+  CC* = enum CCRight = false,CCLeft = true
+  DP* = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
   Order* = enum
     ErrorOrder,Push,Pop,
     Add,Sub,Mul,
@@ -15,20 +15,20 @@ type
     Dup,Roll,InN,
     InC,OutN,OutC,
     Wall,Nop,Terminate
-  DirectedEdge = tuple[index:int,order:Order]
-  NextDirectedEdges = EightDirection[DirectedEdge]
-  IndexTo = ref object
+  DirectedEdge* = tuple[index:int,order:Order]
+  NextDirectedEdges* = EightDirection[DirectedEdge]
+  IndexTo* = ref object
     # 実行に最低限必要な情報のみ保存(0番からスタート)
     # この段階で既に画像の情報は不要
-    blockSize: seq[int]
-    nextEdges: seq[NextDirectedEdges]
-  DebugMode = ref object
+    blockSize*: seq[int]
+    nextEdges*: seq[NextDirectedEdges]
+  DebugMode* = ref object
     # 通常は off だがDebug割り込み用に存在
     isOn: bool
     maxStep: int
-    output : string
-    input : string
-    log : string
+    output: string
+    input: string
+    log: string
   PietCore* = ref object
     index: int
     dp:DP
@@ -38,6 +38,57 @@ type
     step:int
     lastCharIsNewLine: bool
     debug: DebugMode
+
+proc toChar*(order:Order):char =
+  return case order:
+    of Push: 'P'
+    of Pop: 'p'
+    of Add: '+'
+    of Sub: '-'
+    of Mul: '*'
+    of Div: '/'
+    of Mod: '%'
+    of Not: '!'
+    of Greater: '>'
+    of Pointer: '&'
+    of Switch: '?'
+    of Dup: 'D'
+    of Roll: 'R'
+    of InN: 'i'
+    of InC: 'I'
+    of OutN: 'o'
+    of OutC: 'O'
+    of Nop: '_'
+    of Wall: '|'
+    of ErrorOrder: 'E'
+    of Terminate: '$'
+
+proc fromChar*(c:char) : Order =
+  return case c:
+    of 'P' : Push
+    of 'p' : Pop
+    of '+' : Add
+    of '-' : Sub
+    of '*' : Mul
+    of '/' : Div
+    of '%' : Mod
+    of '!' : Not
+    of '>' : Greater
+    of '&' : Pointer
+    of '?' : Switch
+    of 'D' : Dup
+    of 'R' : Roll
+    of 'i' : InN
+    of 'I' : InC
+    of 'o' : OutN
+    of 'O' : OutC
+    of '_' : Nop
+    of '|' : Wall
+    of 'E' : ErrorOrder
+    of '$' : Terminate
+    else : ErrorOrder
+
+
 
 proc decideOrder(now,next:PietColor): Order =
   if next.nwb == Black or now.nwb == Black: return Wall # 解析のためには黒のこともある
@@ -86,7 +137,7 @@ proc getDiffEightPos(): EightDirection[Pos] =
   result.leftR = PosLeft
   result.leftL = PosLeft
 
-proc newIndexTo(self:PietMap): IndexTo =
+proc newIndexTo*(self:PietMap): IndexTo =
   new(result)
   result.blockSize = self.indexToSize
   result.nextEdges = newSeq[NextDirectedEdges](self.maxIndex)
@@ -105,10 +156,11 @@ proc newDebugMode*(isOn:bool = false,maxStep:int = 10000): DebugMode =
   result.input = ""
   result.log = ""
 
-proc newPietCore*(pietMap:PietMap,debug : DebugMode = newDebugMode()) : PietCore =
+proc newPietCore*(indexTo:IndexTo,debug : DebugMode = newDebugMode()) : PietCore =
   result.new()
-  result.indexTo = pietMap.newIndexTo()
+  result.indexTo = indexTo
   result.debug = debug
+
 
 proc init(self:var PietCore) =
   self.index = 0
@@ -227,5 +279,6 @@ if isMainModule:
   let params = os.commandLineParams()
   if params.len() == 0: quit("no params")
   for filename in params:
-    var core = newPietCore(newPietMap(filename))
+    var core = filename.newPietMap().newIndexTo().newPietCore()
     core.exec()
+

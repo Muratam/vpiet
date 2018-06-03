@@ -25,34 +25,10 @@ type
 
 proc `iw`(self:VPiet):int = self.colorMap.width
 proc `ih`(self:VPiet):int = self.colorMap.height
-proc toChar(order:Order):char =
-  return case order:
-    of Push: 'P'
-    of Pop: 'p'
-    of Add: '+'
-    of Sub: '-'
-    of Mul: '*'
-    of Div: '/'
-    of Mod: '%'
-    of Not: '!'
-    of Greater: '>'
-    of Pointer: '&'
-    of Switch: '?'
-    of Dup: 'D'
-    of Roll: 'R'
-    of InN: 'i'
-    of InC: 'I'
-    of OutN: 'o'
-    of OutC: 'O'
-    of Nop: '_'
-    of Wall: '|'
-    else: '#'
-
-
 
 proc reAnalyze(self:var VPiet) =
   self.pMap = self.colorMap.newPietMap()
-  self.core = self.pMap.newPietCore()
+  self.core = self.pMap.newIndexTo().newPietCore()
 
 proc newVPiet(filename:string) :VPiet=
   new(result)
@@ -189,7 +165,7 @@ if isMainModule:
   if files.len() > 1 : exitWithHelp("Multiple Input Files !!")
   if not files[0].endsWith(".png"): exitWithHelp("Illegal File Type")
   if "-e" in params: # VPietは起動せずにPietを実行
-    var core = files[0].newPietMap().newPietCore()
+    var core = files[0].newPietMap().newIndexTo().newPietCore()
     core.exec()
   else:
     var vpiet = newVPiet(files[0])
