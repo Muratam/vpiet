@@ -8,7 +8,6 @@ import pietcore
 
 # make graph
 # show index
-# indexがずれている？(kokoro.png)
 
 type
   VPietState = enum Normal

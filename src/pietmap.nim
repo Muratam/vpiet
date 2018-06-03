@@ -93,6 +93,29 @@ proc getRGBAMatrix*(img:PNGResult):Matrix[RGBA] =
     for x in 0..<img.width:
       result[x,y].a = img.data[n * (x + y * img.width) + 3].uint8
 
+proc getPietColor(img:PNGResult,start:int): PietColor =
+  let
+    r = img.data[start]
+    g = img.data[start+1]
+    b = img.data[start+2]
+  if r == g and g == b :
+    if r == '\xff': return WhiteNumber
+    return BlackNumber
+  let hue :PietColor =
+    if r > g and g == b : 0
+    elif r == g and g > b : 1
+    elif r < g and g > b : 2
+    elif r < g and g == b : 3
+    elif r == g and g < b : 4
+    else : 5
+  # isDark
+  if r <= '\xc0' and g <= '\xc0' and b <= '\xc0': return hue + 12
+  # isLight
+  if r >= '\xc0' and g >= '\xc0' and b >= '\xc0': return hue
+  # normal
+  return 6 + hue
+
+
 # imgをPietで扱いやすいように直接離散化
 proc toColorMap*(img:PNGResult): Matrix[PietColor] =
   result = newMatrix[PietColor](img.width,img.height)
@@ -100,26 +123,10 @@ proc toColorMap*(img:PNGResult): Matrix[PietColor] =
   for y in 0..<img.height:
     for x in 0..<img.width:
       let start = n * (x + y * img.width)
-      let
-        r = img.data[start]
-        g = img.data[start+1]
-        b = img.data[start+2]
-      if r == g and g == b :
-        result[x,y] = if r == '\xff' : WhiteNumber else: BlackNumber
-      else:
-        let isLight :int16 = if r >= '\xc0' and g >= '\xc0' and b >= '\xc0': -6 else: 0
-        let isDark :int16 = if r <= '\xc0' and g <= '\xc0' and b <= '\xc0': 6 else : 0
-        let hue :int16 =
-          if r > g and g == b : 0
-          elif r == g and g > b : 1
-          elif r < g and g > b : 2
-          elif r < g and g == b : 3
-          elif r == g and g < b : 4
-          else : 5
-        result[x,y] = (6 + isLight + isDark + hue)
+      result[x,y] = img.getPietColor(start)
 
 
-# 解析し,indexをつける(高速 and StackOverflow対策済み)
+
 proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
   self.width = colorMap.width
   self.height = colorMap.height
@@ -129,6 +136,7 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
   var index = 0
   var endPos : EndPos
   var blockSize = 0
+
 
   proc updateEndPos(x,y:int32) =
     if y < endPos.upR.y : endPos.upR = (x,y)
@@ -148,24 +156,27 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
     if x > endPos.rightL.x : endPos.rightL = (x,y)
     elif x == endPos.rightL.x and y < endPos.rightL.y : endPos.rightL = (x,y)
   proc find(self:var PietMap,color:PietColor) =
+    template searchNext(x2,y2:int32,op:untyped): untyped =
+      block:
+        let x {.inject.} = x2
+        let y {.inject.} = y2
+        if op and indexMap[x,y] == 0 and self.pietColorMap[x,y] == color:
+          indexMap[x,y] = index
+          stack.push((x,y))
     while not stack.isEmpty():
       let (x,y) = stack.pop()
-      if indexMap[x,y] == index : continue # 探索済みの可能性はある
-      indexMap[x,y] = index
       blockSize += 1
-      updateEndPos(x,y)
-      for dxdy in [(-1, 0), (1, 0), (0, 1), (0, -1)]:
-        let (dx,dy) = dxdy
-        let (x2,y2) = (x+dx,y+dy)
-        if x2 < 0 or y2 < 0 or x2 >= self.width or y2 >= self.height : continue
-        if indexMap[x2,y2] > 0 or self.pietColorMap[x2,y2] != color: continue
-        stack.push((x2.int32,y2.int32))
-
-  # 1-origin (0 is not-defined) # 0.4s
+      updateEndPos(x,y) # 0.03
+      searchNext(x-1,y  ,x >= 0) # 0.02 * 4
+      searchNext(x+1,y  ,x < self.width)
+      searchNext(x  ,y-1,y >= 0)
+      searchNext(x  ,y+1,y < self.height)
+  # 1-origin (0 is not-defined)
   self.indexToPietColor = @[]
   self.indexToEndPos = @[]
   self.indexToSize = @[]
-  for y in 0 ..< self.height:
+
+  for y in 0 ..< self.height: # 0.4s
     for x in 0 ..< self.width:
       if indexMap[x,y] > 0 : continue
       blockSize = 0
@@ -173,6 +184,7 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
       let here = (x.int32,y.int32)
       stack.push(here)
       endPos = (here,here,here,here,here,here,here,here)
+      indexMap[x,y] = index
       self.find(self.pietColorMap[x,y])
       self.indexToPietColor.add(self.pietColorMap[x,y])
       self.indexToEndPos.add(endPos)
@@ -188,7 +200,7 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
 proc newPietMap*(filename:string): PietMap =
   new(result)
   result.filename = filename
-  let image = loadPNG32(filename)
+  let image = loadPNG32(filename) # 0.18s
   let colorMap = image.toColorMap() # 0.08s
   result.analyzeColorMap(colorMap) # 0.40s
 

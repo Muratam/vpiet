@@ -83,7 +83,10 @@ template loop*(curse:var Curse,updateFun:typed) =
     let keys = curse.getKeys()
     if keys.anyIt(it in curse.exitKeys) : break
     curse.keys = keys
-    updateFun
+    try: updateFun
+    except Exception:
+      curse.close()
+      raise getCurrentException()
     stdout.flushFile()
   curse.close()
 
