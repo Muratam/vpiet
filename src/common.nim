@@ -62,35 +62,6 @@ proc `$`*[T](self:var Matrix[T]) :string=
       result &= $self[x,y]
     result &= "\n"
 
-# 幾何計算用
-type EightDirection*[T] = tuple[upR,upL,downR,downL,rightR,rightL,leftR,leftL:T]
-proc zipCalc*[T,S,U](a:EightDirection[T],b:EightDirection[S],fn:proc(t:T,s:S):U) : EightDirection[U] =
-  result[0] = fn(a[0],b[0])
-  result[1] = fn(a[1],b[1])
-  result[2] = fn(a[2],b[2])
-  result[3] = fn(a[3],b[3])
-  result[4] = fn(a[4],b[4])
-  result[5] = fn(a[5],b[5])
-  result[6] = fn(a[6],b[6])
-  result[7] = fn(a[7],b[7])
-proc map*[T,S](a:EightDirection[T],fn:proc(t:T):S) : EightDirection[S] =
-  result[0] = fn(a[0])
-  result[1] = fn(a[1])
-  result[2] = fn(a[2])
-  result[3] = fn(a[3])
-  result[4] = fn(a[4])
-  result[5] = fn(a[5])
-  result[6] = fn(a[6])
-  result[7] = fn(a[7])
-iterator items*[T](a:var EightDirection[T]): var T =
-  yield a[0]
-  yield a[1]
-  yield a[2]
-  yield a[3]
-  yield a[4]
-  yield a[5]
-  yield a[6]
-  yield a[7]
 
 
 type Pos* = tuple[x,y:int32]

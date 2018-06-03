@@ -1,7 +1,7 @@
 import common
 import nimPNG
-import pietcolor
-export pietcolor
+import pietbase
+export pietbase
 
 # PNG ファイルから PietColor ブロック毎に色とindexを付ける
 

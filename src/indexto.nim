@@ -4,7 +4,6 @@ import pietmap
 # index -> { index / size } の接続グラフ
 # (元画像のxy情報を完全に排除)
 
-
 type
   DirectedEdge* = tuple[index:int,order:Order]
   NextDirectedEdges* = EightDirection[DirectedEdge]
@@ -13,8 +12,6 @@ type
     # この段階で既に画像の情報は不要
     blockSize*: seq[int]
     nextEdges*: seq[NextDirectedEdges]
-
-
 
 proc getNextDirectedEdge(self:PietMap,color:PietColor,pos,dxdy:Pos): DirectedEdge =
   block: # non-white

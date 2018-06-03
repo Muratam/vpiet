@@ -1,5 +1,5 @@
 import common
-import pietmap, indexto, pietcolor
+import pietmap, indexto
 
 # proc makeGraph(filename:string) =
 #   let core = newPietCore(filename)
@@ -18,8 +18,11 @@ import pietmap, indexto, pietcolor
 #   dot &= "}"
 #   echo dot
 
+
+
+
 if isMainModule:
-  let params = os.commandLineParams()
+  let params = commandLineParams()
   if params.len() == 0: quit("no params")
-  # for filename in params:
-  #   makeGraph(filename)
+  for filename in params:
+    var indexTo = filename.newPietMap().newIndexTo()

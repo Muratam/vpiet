@@ -5,8 +5,7 @@ export pietmap, indexto
 
 
 type
-  CC* = enum CCRight = false,CCLeft = true
-  DP* = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
+
   DebugMode* = ref object
     # 通常は off だがDebug割り込み用に存在
     isOn: bool
@@ -46,25 +45,7 @@ proc init(self:var PietCore) =
   self.lastCharIsNewLine = true
   self.stack = newStack[int](4096)
 
-proc chooseDirection[T](self:var PietCore,val:EightDirection[T]) : T =
-  return case self.cc:
-    of CCLeft:
-      case self.dp:
-        of DPRight: val.rightL
-        of DPDown: val.downL
-        of DPLeft: val.leftL
-        of DPUp: val.upL
-    of CCRight:
-      case self.dp:
-        of DPRight: val.rightR
-        of DPDown: val.downR
-        of DPLeft: val.leftR
-        of DPUp: val.upR
 
-proc toggleCC(self:var PietCore) =
-  self.cc = (not self.cc.bool).CC
-proc toggleDP(self:var PietCore,n:int = 1) =
-  self.dp = ((self.dp.int + n) mod 4).DP
 
 proc binaryFun(self:var PietCore,fn:proc(a,b:int):int) =
   if self.stack.len() < 2 : return
@@ -95,8 +76,8 @@ proc doOrder(self:var PietCore,order:Order,size:int) =
     of Push: self.stack.push(size)
     of Pop: self.unaryIt((discard))
     of Not: self.unaryIt(self.stack.push(if it > 0 : 0 else: 1))
-    of Pointer: self.unaryIt(self.toggleDP(it))
-    of Switch: self.unaryIt(if it mod 2 == 1 : self.toggleCC())
+    of Pointer: self.unaryIt(self.dp.toggle(it))
+    of Switch: self.unaryIt(if it mod 2 == 1 : self.cc.toggle())
     of InC: self.stack.push(stdin.readChar().int) # WARN:
     of InN:
       var x :int
@@ -130,14 +111,14 @@ proc nextStep(self:var PietCore): bool =
   self.step += 1
   let nextEdge = self.indexTo.nextEdges[self.index]
   for i in 0..<8: # 8方向全て見る
-    let (index,order) = self.chooseDirection(nextEdge)
+    let (index,order) = nextEdge.chooseDirection(self.cc,self.dp)
     if order == Terminate: return false
     if order != Wall:
       self.doOrder(order,self.indexTo.blockSize[self.index])
       self.index = index
       return true
-    if i mod 2 == 0: self.toggleCC()
-    else : self.toggleDP()
+    if i mod 2 == 0: self.cc.toggle()
+    else : self.dp.toggle(1)
   return false
 
 proc exec*(self:var PietCore) =
