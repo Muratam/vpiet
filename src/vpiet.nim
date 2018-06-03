@@ -66,8 +66,9 @@ proc drawImage(self:var VPiet,box:Rect) =
       currentColor = color
       result &= "{color}".fmt
     if (x,y) == (vx,vy) : return result & "@"
-    for epxy in self.pMap.indexToEndPos[vIndex]:
-      let (epx,epy) = epxy
+    for ccdp in allCCDP():
+      let (cc,dp) = ccdp
+      let (epx,epy) = self.pMap.indexToEndPos[vIndex][cc,dp]
       if (epx.int,epy.int) != (x2,y2): continue
       return result & "*"
     if index == vIndex : return result & "."
@@ -116,11 +117,11 @@ proc update(self:var VPiet,keys:seq[char]) : tuple[waitNext:bool]=
   if keys.len < 3:
     let key = keys[0]
     case key:
-      of 'k': self.pos.y -= 1
-      of 'h': self.pos.x -= 1
-      of 'j': self.pos.y += 1
-      of 'l': self.pos.x += 1
-      else: discard
+    of 'k': self.pos.y -= 1
+    of 'h': self.pos.x -= 1
+    of 'j': self.pos.y += 1
+    of 'l': self.pos.x += 1
+    else: discard
   elif keys.len >= 3:
     let keyseq = keys[..2]
     if   keyseq == @['\e','[','C']: self.pos.x += 1

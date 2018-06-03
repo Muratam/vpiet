@@ -14,7 +14,7 @@ type Stack*[T] = ref object
   data:seq[T]
   size:int
   index:int
-proc newStack*[T](size:int):Stack[T] =
+proc newStack*[T](size:int = 64):Stack[T] =
   new(result)
   result.data = newSeq[T](size)
   result.size = size

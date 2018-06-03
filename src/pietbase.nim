@@ -26,19 +26,19 @@ proc toRGB*(c:PietColor):tuple[r,g,b:uint8] =
   const xc0 = 192.uint8
   const xff = 255.uint8
   case c:
-    of WhiteNumber: return (xff,xff,xff)
-    of BlackNumber: return (x00,x00,x00)
-    else:
-      let l = if c.light == 0 : xc0 else: x00
-      let h = if c.light == 2 : xc0 else: xff
-      return case c.hue:
-        of 0: (h,l,l)
-        of 1: (h,h,l)
-        of 2: (l,h,l)
-        of 3: (l,h,h)
-        of 4: (l,l,h)
-        of 5: (h,l,h)
-        else: (h,h,h)
+  of WhiteNumber: return (xff,xff,xff)
+  of BlackNumber: return (x00,x00,x00)
+  else:
+    let l = if c.light == 0 : xc0 else: x00
+    let h = if c.light == 2 : xc0 else: xff
+    return case c.hue:
+      of 0: (h,l,l)
+      of 1: (h,h,l)
+      of 2: (l,h,l)
+      of 3: (l,h,h)
+      of 4: (l,l,h)
+      of 5: (h,l,h)
+      else: (h,h,h)
 
 
 #[
@@ -135,47 +135,49 @@ proc decideOrder*(now,next:PietColor): Order =
 type
   CC* = enum CCRight = false,CCLeft = true
   DP* = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
-  EightDirection*[T] = tuple[upR,upL,downR,downL,rightR,rightL,leftR,leftL:T]
+  EightDirection*[T] = tuple[rightL,rightR,downL,downR,leftL,leftR,upL,upR:T]
+proc newCC*():CC = CCLeft
+proc newDP*():DP = DPRight
 proc toggle*(cc: var CC) = cc = (not cc.bool).CC
 proc toggle*(dp:var DP,n:int = 1) = dp = ((dp.int + n) mod 4).DP
-proc zipCalc*[T,S,U](a:EightDirection[T],b:EightDirection[S],fn:proc(t:T,s:S):U) : EightDirection[U] =
-  result[0] = fn(a[0],b[0])
-  result[1] = fn(a[1],b[1])
-  result[2] = fn(a[2],b[2])
-  result[3] = fn(a[3],b[3])
-  result[4] = fn(a[4],b[4])
-  result[5] = fn(a[5],b[5])
-  result[6] = fn(a[6],b[6])
-  result[7] = fn(a[7],b[7])
-proc map*[T,S](a:EightDirection[T],fn:proc(t:T):S) : EightDirection[S] =
-  result[0] = fn(a[0])
-  result[1] = fn(a[1])
-  result[2] = fn(a[2])
-  result[3] = fn(a[3])
-  result[4] = fn(a[4])
-  result[5] = fn(a[5])
-  result[6] = fn(a[6])
-  result[7] = fn(a[7])
-iterator items*[T](a:var EightDirection[T]): var T =
-  yield a[0]
-  yield a[1]
-  yield a[2]
-  yield a[3]
-  yield a[4]
-  yield a[5]
-  yield a[6]
-  yield a[7]
-proc chooseDirection*[T](val:EightDirection[T],cc:CC,dp:DP) : T =
+
+iterator allCCDP*():(CC,DP) =
+  yield (CCLeft ,DPRight)
+  yield (CCRight,DPRight)
+  yield (CCLeft ,DPDown)
+  yield (CCRight,DPDown)
+  yield (CCLeft ,DPLeft)
+  yield (CCRight,DPLeft)
+  yield (CCLeft ,DPUp)
+  yield (CCRight,DPUp)
+
+proc `[]=`*[T](self:var EightDirection[T],cc:CC,dp:DP,val:T) =
+  case cc:
+  of CCLeft:
+    case dp:
+    of DPRight: self.rightL = val
+    of DPDown: self.downL = val
+    of DPLeft: self.leftL = val
+    of DPUp: self.upL = val
+  of CCRight:
+    case dp:
+    of DPRight: self.rightR = val
+    of DPDown: self.downR = val
+    of DPLeft: self.leftR = val
+    of DPUp: self.upR = val
+
+proc `[]`*[T](val:EightDirection[T],cc:CC,dp:DP) : T =
   return case cc:
     of CCLeft:
       case dp:
-        of DPRight: val.rightL
-        of DPDown: val.downL
-        of DPLeft: val.leftL
-        of DPUp: val.upL
+      of DPRight: val.rightL
+      of DPDown: val.downL
+      of DPLeft: val.leftL
+      of DPUp: val.upL
     of CCRight:
       case dp:
-        of DPRight: val.rightR
-        of DPDown: val.downR
-        of DPLeft: val.leftR
-        of DPUp: val.upR
+      of DPRight: val.rightR
+      of DPDown: val.downR
+      of DPLeft: val.leftR
+      of DPUp: val.upR
+

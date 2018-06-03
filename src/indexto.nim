@@ -54,5 +54,6 @@ proc newIndexTo*(self:PietMap): IndexTo =
   for i in 0..< self.maxIndex:
     let endPos = self.indexToEndPos[i]
     let color = self.indexToPietColor[i]
-    result.nextEdges[i] = zipCalc(endPos,dXdYs,
-        (pos,dxdy) => self.getNextDirectedEdge(color,pos,dxdy))
+    for ccdp in allCCDP():
+      let (cc,dp) = ccdp
+      result.nextEdges[i][cc,dp] = self.getNextDirectedEdge(color,endPos[cc,dp],dXdYs[cc,dp])
