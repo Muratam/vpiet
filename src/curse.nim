@@ -1,7 +1,6 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat
-import os,times
-import random
-import terminal,termios,os,posix
+import common
+import terminal,termios,posix
+export terminal,termios,posix
 from libs.ncurses.ncurses as nc import nil
 
 # CUIでごにょごにょする際のラッパーモジュール

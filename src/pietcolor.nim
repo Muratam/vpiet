@@ -1,5 +1,4 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat
-import os,times
+import common
 
 type
   NWB* = enum None,White,Black

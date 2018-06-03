@@ -1,6 +1,5 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat,strscans
-import os,times
-import util, pietmap, indexto, pietorder
+import common
+import pietmap, indexto, pietcolor
 
 # proc makeGraph(filename:string) =
 #   let core = newPietCore(filename)

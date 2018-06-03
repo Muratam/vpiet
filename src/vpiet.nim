@@ -1,8 +1,7 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat
-import os,times,terminal,termios,os,posix,random
-import nimPNG
+import common
 import curse
-import util, pietmap, indexto, pietcolor, pietcore
+import nimPNG
+import pietcore
 
 # make graph
 # show index
@@ -105,7 +104,7 @@ proc drawLabel(self: var VPiet,drawYPos:int) =
 
 proc drawLog(self:var VPiet,drawYPos:int) =
   setCursorPos(0,drawYPos)
-  terminal.eraseLine()
+  eraseLine()
   if self.log.len >= self.term.w-1: self.log = self.log[..(self.term.w-1)]
   stdout.write self.log
 
@@ -155,7 +154,7 @@ proc exitWithHelp(errorLog:string = "") =
   quit()
 
 if isMainModule:
-  let params = os.commandLineParams()
+  let params = commandLineParams()
   if params.len() == 0: exitWithHelp()
   let files = params.filterIt(not it.startswith("-"))
   if "-h" in params: exitWithHelp()

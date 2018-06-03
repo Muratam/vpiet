@@ -1,9 +1,7 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat
+import common
 import nimPNG
-import os
-import util
-import times
 import pietcolor
+export pietcolor
 
 # PNG ファイルから PietColor ブロック毎に色とindexを付ける
 
@@ -161,7 +159,7 @@ proc newPietMap*(colorMap:Matrix[PietColor],tempName :string = "out.png"): PietM
 
 if isMainModule:
   # Piet地図の解析を行い,掛かった時間を表示
-  let params = os.commandLineParams()
+  let params = commandLineParams()
   if params.len() == 0: quit("no params")
   for filename in params:
     let pietMap = newPietMap(filename)

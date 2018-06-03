@@ -1,6 +1,7 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat,strscans
-import os,times
-import util, pietmap, indexto, pietcolor
+
+import common
+import pietmap, indexto
+export pietmap, indexto
 
 
 type
@@ -151,7 +152,7 @@ proc exec*(self:var PietCore) =
 
 if isMainModule:
   # Pietを実行
-  let params = os.commandLineParams()
+  let params = commandLineParams()
   if params.len() == 0: quit("no params")
   for filename in params:
     var core = filename.newPietMap().newIndexTo().newPietCore()

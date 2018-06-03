@@ -1,12 +1,7 @@
 
-import sequtils,strutils,algorithm,math,future,macros,strformat
-import os,times
-import pietmap
-import util
-import strscans
+import common
+import pietcore
 import streams
-import pietMap
-import pietCore
 
 # 0.3s at htmlserver.png
 # (C lang interface ?)
