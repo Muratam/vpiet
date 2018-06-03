@@ -1,7 +1,11 @@
 import sequtils,strutils,algorithm,math,future,macros,strformat
 import pietmap
 import util
-import pietorder
+import pietcolor
+
+# index -> { index / size } の接続グラフ
+# PietMap をもとに作成 (元画像のxy情報を完全に排除)
+
 
 type
   DirectedEdge* = tuple[index:int,order:Order]

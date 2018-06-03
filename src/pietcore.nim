@@ -1,6 +1,7 @@
 import sequtils,strutils,algorithm,math,future,macros,strformat,strscans
 import os,times
-import util, pietmap, indexto, pietorder
+import util, pietmap, indexto, pietcolor
+
 
 type
   CC* = enum CCRight = false,CCLeft = true

@@ -3,8 +3,10 @@ import os,times
 import random
 import terminal,termios,os,posix
 from libs.ncurses.ncurses as nc import nil
-proc timeout(t:int): void {.cdecl, discardable, importc: "timeout", dynlib: nc.libncurses.}
 
+# CUIでごにょごにょする際のラッパーモジュール
+
+proc timeout(t:int): void {.cdecl, discardable, importc: "timeout", dynlib: nc.libncurses.}
 proc code*[T](key:T) : string = fmt "\e[{key}m"
 proc toForeColor*(i:int): string = code( fmt"38;5;{i}" )
 proc toBackColor*(i:int): string = code( fmt"48;5;{i}" )

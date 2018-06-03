@@ -1,5 +1,7 @@
 import sequtils,strutils,algorithm,math,future,macros,strformat,times
 
+# いわゆるcommonモジュール
+
 proc `*`*(str:string,n:int) : string =
   result = ""
   for i in 0..<n: result &= str

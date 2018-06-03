@@ -2,7 +2,7 @@ import sequtils,strutils,algorithm,math,future,macros,strformat
 import os,times,terminal,termios,os,posix,random
 import nimPNG
 import curse
-import util, pietmap, indexto, pietorder, pietcore
+import util, pietmap, indexto, pietcolor, pietcore
 
 # make graph
 # show index
