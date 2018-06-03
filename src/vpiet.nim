@@ -1,10 +1,8 @@
 import sequtils,strutils,algorithm,math,future,macros,strformat
 import os,times,terminal,termios,os,posix,random
 import nimPNG
-import pietmap
-import util
 import curse
-import pietcore
+import util, pietmap, indexto, pietorder, pietcore
 
 # make graph
 # show index

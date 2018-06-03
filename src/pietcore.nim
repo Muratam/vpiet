@@ -1,27 +1,10 @@
-import sequtils,strutils,algorithm,math,future,macros,strformat
+import sequtils,strutils,algorithm,math,future,macros,strformat,strscans
 import os,times
-import pietmap
-import util
-import strscans
+import util, pietmap, indexto, pietorder
 
 type
   CC* = enum CCRight = false,CCLeft = true
   DP* = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
-  Order* = enum
-    ErrorOrder,Push,Pop,
-    Add,Sub,Mul,
-    Div,Mod,Not,
-    Greater,Pointer,Switch,
-    Dup,Roll,InN,
-    InC,OutN,OutC,
-    Wall,Nop,Terminate
-  DirectedEdge* = tuple[index:int,order:Order]
-  NextDirectedEdges* = EightDirection[DirectedEdge]
-  IndexTo* = ref object
-    # 実行に最低限必要な情報のみ保存(0番からスタート)
-    # この段階で既に画像の情報は不要
-    blockSize*: seq[int]
-    nextEdges*: seq[NextDirectedEdges]
   DebugMode* = ref object
     # 通常は off だがDebug割り込み用に存在
     isOn: bool
@@ -39,114 +22,6 @@ type
     lastCharIsNewLine: bool
     debug: DebugMode
 
-proc toChar*(order:Order):char =
-  return case order:
-    of Push: 'P'
-    of Pop: 'p'
-    of Add: '+'
-    of Sub: '-'
-    of Mul: '*'
-    of Div: '/'
-    of Mod: '%'
-    of Not: '!'
-    of Greater: '>'
-    of Pointer: '&'
-    of Switch: '?'
-    of Dup: 'D'
-    of Roll: 'R'
-    of InN: 'i'
-    of InC: 'I'
-    of OutN: 'o'
-    of OutC: 'O'
-    of Nop: '_'
-    of Wall: '|'
-    of ErrorOrder: 'E'
-    of Terminate: '$'
-
-proc fromChar*(c:char) : Order =
-  return case c:
-    of 'P' : Push
-    of 'p' : Pop
-    of '+' : Add
-    of '-' : Sub
-    of '*' : Mul
-    of '/' : Div
-    of '%' : Mod
-    of '!' : Not
-    of '>' : Greater
-    of '&' : Pointer
-    of '?' : Switch
-    of 'D' : Dup
-    of 'R' : Roll
-    of 'i' : InN
-    of 'I' : InC
-    of 'o' : OutN
-    of 'O' : OutC
-    of '_' : Nop
-    of '|' : Wall
-    of 'E' : ErrorOrder
-    of '$' : Terminate
-    else : ErrorOrder
-
-
-
-proc decideOrder(now,next:PietColor): Order =
-  if next.nwb == Black or now.nwb == Black: return Wall # 解析のためには黒のこともある
-  if next.nwb == White or now.nwb == White: return Nop
-  let hueDiff = (6 + (next.hue - now.hue) mod 6) mod 6
-  let lightDiff = (3 + (next.light - now.light) mod 3) mod 3
-  return [
-    [ErrorOrder,Push,Pop],
-    [Add,Sub,Mul],
-    [Div,Mod,Not],
-    [Greater,Pointer,Switch],
-    [Dup,Roll,InN],
-    [InC,OutN,OutC],
-  ][hueDiff][lightDiff]
-
-
-proc getNextDirectedEdge(self:PietMap,color:PietColor,pos,dxdy:Pos): DirectedEdge =
-  block: # non-white
-    let (x,y) = pos + dxdy
-    if x < 0 or y < 0 or x >= self.width or y >= self.height:
-      return (-1,Wall)
-    let nextIndex = self.indexMap[x,y]
-    let nextColor = self.indexToPietColor[nextIndex]
-    if nextColor.nwb != White:
-      return (nextIndex,decideOrder(color,nextColor))
-  # White WARN: ver.KMC-Piet
-  var current = pos
-  while true:
-    current = current + dxdy
-    let (cx,cy) = current
-    if cx < 0 or cy < 0 or cx >= self.width or cy >= self.height:
-      return (-1,Wall)
-    let nextIndex = self.indexMap[cx,cy]
-    let nextColor = self.indexToPietColor[nextIndex]
-    if nextColor == BlackNumber: return (nextIndex,Wall)
-    if nextColor == WhiteNumber: continue
-    return (nextIndex,Nop)
-
-proc getDiffEightPos(): EightDirection[Pos] =
-  result.upR = PosUp
-  result.upL = PosUp
-  result.downR = PosDown
-  result.downL = PosDown
-  result.rightR = PosRight
-  result.rightL = PosRight
-  result.leftR = PosLeft
-  result.leftL = PosLeft
-
-proc newIndexTo*(self:PietMap): IndexTo =
-  new(result)
-  result.blockSize = self.indexToSize
-  result.nextEdges = newSeq[NextDirectedEdges](self.maxIndex)
-  let dXdYs = getDiffEightPos()
-  for i in 0..< self.maxIndex:
-    let endPos = self.indexToEndPos[i]
-    let color = self.indexToPietColor[i]
-    result.nextEdges[i] = zipCalc(endPos,dXdYs,
-        (pos,dxdy) => self.getNextDirectedEdge(color,pos,dxdy))
 
 proc newDebugMode*(isOn:bool = false,maxStep:int = 10000): DebugMode =
   new(result)
@@ -160,7 +35,6 @@ proc newPietCore*(indexTo:IndexTo,debug : DebugMode = newDebugMode()) : PietCore
   result.new()
   result.indexTo = indexTo
   result.debug = debug
-
 
 proc init(self:var PietCore) =
   self.index = 0
