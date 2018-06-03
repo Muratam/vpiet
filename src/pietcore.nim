@@ -7,7 +7,7 @@ import strscans
 type
   CC = enum CCRight = false,CCLeft = true
   DP = enum DPRight = 0,DPDown = 1,DPLeft = 2,DPUp = 3
-  Order = enum
+  Order* = enum
     ErrorOrder,Push,Pop,
     Add,Sub,Mul,
     Div,Mod,Not,

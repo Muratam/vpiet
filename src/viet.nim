@@ -8,6 +8,7 @@ import pietcore
 
 # make graph
 # show index
+# indexがずれている？(kokoro.png)
 
 type
   VietState = enum Normal
@@ -25,6 +26,30 @@ type
 
 proc `iw`(self:Viet):int = self.colorMap.width
 proc `ih`(self:Viet):int = self.colorMap.height
+proc toChar(order:Order):char =
+  return case order:
+    of Push: 'P'
+    of Pop: 'p'
+    of Add: '+'
+    of Sub: '-'
+    of Mul: '*'
+    of Div: '/'
+    of Mod: '%'
+    of Not: '!'
+    of Greater: '>'
+    of Pointer: '&'
+    of Switch: '?'
+    of Dup: 'D'
+    of Roll: 'R'
+    of InN: 'i'
+    of InC: 'I'
+    of OutN: 'o'
+    of OutC: 'O'
+    of Nop: '_'
+    of Wall: '|'
+    else: '#'
+
+
 
 proc reAnalyze(self:var Viet) =
   self.pMap = self.colorMap.newPietMap()

@@ -13,7 +13,7 @@ type Stack*[T] = ref object
   index:int
 proc newStack*[T](size:int):Stack[T] =
   new(result)
-  result.data = newSeq[T](size + 10)
+  result.data = newSeq[T](size)
   result.size = size
   result.index = -1
 proc isEmpty*[T](self:var Stack[T]): bool = self.index < 0

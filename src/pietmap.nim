@@ -125,7 +125,7 @@ proc analyzeColorMap(self:var PietMap,colorMap: Matrix[PietColor]) =
   self.height = colorMap.height
   self.pietColorMap = colorMap
   var indexMap = newMatrix[int](self.width,self.height)
-  var stack = newStack[Pos](( self.width + self.height ) * 2)
+  var stack = newStack[Pos]( 64.max(self.width * self.height div 4))
   var index = 0
   var endPos : EndPos
   var blockSize = 0
