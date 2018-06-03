@@ -4,7 +4,7 @@ author        = "murata"
 description   = "Veaaaa Piet"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["viet"]
+bin           = @["vpiet"]
 
 # Dependencies
 requires "nim >= 0.18.0","nimPNG"
