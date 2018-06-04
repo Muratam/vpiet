@@ -36,6 +36,63 @@ proc `$`*(self:seq[PietProc]):string =
     results &= self[i].toStr(i)
   return results.join("\n")
 
+type PietEmu = ref object
+  dp:DP
+  cc:CC
+  stack:Stack[int]
+  nextDPCCIndex:int
+proc newPietEmu*(dp:DP,cc:CC):PietEmu =
+  new(result)
+  result.dp = dp
+  result.cc = cc
+  result.stack = newStack[int]()
+  result.nextDPCCIndex = -1
+proc step(self:PietEmu,info:OrderWithInfo) : bool =
+  result = true
+  self.cc = info.cc
+  self.dp = info.dp
+  template binaryIt(op) =
+    if self.stack.len() < 2 : return false
+    let a {.inject.}= self.stack.pop()
+    let b {.inject.}= self.stack.pop()
+    op
+  template unaryIt(op) =
+    if self.stack.len() < 1 : return false
+    let it {.inject.} = self.stack.pop()
+    op
+  case info.order
+  of Add: binaryIt(self.stack.push(b + a))
+  of Sub: binaryIt(self.stack.push(b - a))
+  of Mul: binaryIt(self.stack.push(b * a))
+  of Div: binaryIt(self.stack.push(b div a))
+  of Mod: binaryIt(self.stack.push(b mod a))
+  of Greater: binaryIt(self.stack.push(if b > a : 1 else: 0))
+  of Push: self.stack.push(info.size)
+  of Pop: unaryIt((discard))
+  of Not: unaryIt(self.stack.push(if it > 0 : 0 else: 1))
+  of Pointer: unaryIt((self.nextDPCCIndex = ((it mod 4) + 4 mod 4)))
+  of Switch:  unaryIt((self.nextDPCCIndex = ((it mod 2) + 2 mod 2)))
+  of InC: return false #
+  of InN: return false
+  of OutN: discard
+  of OutC: discard
+  of Dup: unaryIt((self.stack.push(it);self.stack.push(it)))
+  of Roll:
+    if self.stack.len() < 3 : return false
+    let a = self.stack.pop() # a 回転
+    var b = self.stack.pop() # 深さ b まで
+    if b > self.stack.len(): return false
+    var roll = newSeq[int]()
+    for i in 0..<b: roll.add(self.stack.pop())
+    for i in 0..<b: self.stack.push(roll[(i + a) mod b])
+  of Wall:discard
+  else:discard
+proc execSteps(emu:var PietEmu,orders:seq[OrderWithInfo]): bool =
+  for order in orders:
+    if not emu.step(order): return false
+  return true
+
+
 proc newGraph(filename:string) : seq[PietProc] =
   # グラフを作成
   # Nopの分がバグの原因？(違うと思う)
@@ -174,60 +231,12 @@ proc newGraph(filename:string) : seq[PietProc] =
       for i in 0..<self.len():
         let pp = self[i]
         if pp.nexts.len() <= 1: continue
-        var nextDPCCIndex = 0
-        proc testPiet(): bool =
-          var dp = pp.startDP
-          var cc = pp.startCC
-          var stack = newStack[int]()
-          proc step(info:OrderWithInfo) : bool =
-            result = true
-            cc = info.cc
-            dp = info.dp
-            template binaryIt(op) =
-              if stack.len() < 2 : return false
-              let a {.inject.}= stack.pop()
-              let b {.inject.}= stack.pop()
-              op
-            template unaryIt(op) =
-              if stack.len() < 1 : return false
-              let it {.inject.} = stack.pop()
-              op
-            case info.order
-            of Add: binaryIt(stack.push(b + a))
-            of Sub: binaryIt(stack.push(b - a))
-            of Mul: binaryIt(stack.push(b * a))
-            of Div: binaryIt(stack.push(b div a))
-            of Mod: binaryIt(stack.push(b mod a))
-            of Greater: binaryIt(stack.push(if b > a : 1 else: 0))
-            of Push: stack.push(info.size)
-            of Pop: unaryIt((discard))
-            of Not: unaryIt(stack.push(if it > 0 : 0 else: 1))
-            of Pointer: unaryIt((nextDPCCIndex = ((it mod 4) + 4 mod 4)))
-            of Switch:  unaryIt((nextDPCCIndex = ((it mod 2) + 2 mod 2)))
-            of InC: return false #
-            of InN: return false
-            of OutN: discard
-            of OutC: discard
-            of Dup: unaryIt((stack.push(it);stack.push(it)))
-            of Roll:
-              if stack.len() < 3 : return false
-              let a = stack.pop() # a 回転
-              var b = stack.pop() # 深さ b まで
-              if b > stack.len(): return false
-              var roll = newSeq[int]()
-              for i in 0..<b: roll.add(stack.pop())
-              for i in 0..<b: stack.push(roll[(i + a) mod b])
-            of Wall:discard
-            else:discard
-          for order in pp.orders:
-            if not step(order): return false
-          return true
-        if not testPiet(): continue
-        let newOne = @[self[i].nexts[nextDPCCIndex]]
-        # ただ一通りに決まる時がある(最適化のせいでそうでないときもあるかも)
+        var emu = newPietEmu(pp.startDP,pp.startCC)
+        if not emu.execSteps(pp.orders): continue
+        let newOne = @[self[i].nexts[emu.nextDPCCIndex]]
         if newOne.len == self[i].nexts.len(): continue
-        result = true
         self[i].nexts = newOne
+        result = true
 
     proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
       proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
