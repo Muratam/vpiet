@@ -33,15 +33,7 @@ proc `$`*(self:seq[PietProc]):string =
     results &= self[i].toStr(i)
   return results.join("\n")
 
-# let prePP = self[pre.graphIndex].pp
-# if pre.orderNum == prePP.orders.len():
-#   # 末尾なので直接繋げば分割しなくてもよい
-#   for n in prePP.nexts:
-#     if self[n].pp.startCC == cc and self[n].pp.startDP == dp:
-#       orders.add((ErrorOrder,-2))
-#       terminate(@[n])
-#       return
-type NotDevidedGraph = tuple[pp:PietProc,devideOrderNum:int]#,endDP:DP,endCC:CC]
+type NotDevidedGraph = tuple[pp:PietProc,devideOrderNum:int,endCC:CC,endDP:DP]
 proc `isDevide`(self:NotDevidedGraph) :bool = self.devideOrderNum >= 0
 proc newGraph(filename:string) : seq[PietProc] =
   var indexTo = filename.newPietMap().newIndexTo()
@@ -53,7 +45,7 @@ proc newGraph(filename:string) : seq[PietProc] =
     graphIndex += 1
     result = graphIndex # 予め返り値を保存
     var (cc,dp,index,orders) = (startCC,startDP,startIndex,newSeq[OrderAndSize]())
-    template terminate(nexts :seq[int]= @[]) = self.add(((orders,nexts,startCC,startDP),-1))
+    template terminate(nexts :seq[int]= @[]) = self.add(((orders,nexts,startCC,startDP),-1,cc,dp))
     # WARN: 仮想的にstackを作成して道中のシミュレーションをすれば CC / DP が確定する可能性
     while true:
       let next = indexTo.nextEdges[index][cc,dp]
@@ -142,10 +134,14 @@ proc newGraph(filename:string) : seq[PietProc] =
           self[deviderIndex].pp.nexts = @[maxIndex]
           continue
         currentDevidePos = devidePos
-        let newer = (parent.pp.orders[devidePos..^1],parent.pp.nexts,newCC(),newDP())
-        self.add((newer,-1)) # WARN: CC,DP is wrong(道中のDP,CCをとればいいとはおもう)
+        let midCC = self[deviderIndex].endCC
+        let midDP = self[deviderIndex].endDP
+        let newer = (parent.pp.orders[devidePos..^1],parent.pp.nexts,midCC,midDP)
+        self.add((newer,-1,parent.endCC,parent.endDP)) # WARN: CC,DP is wrong(道中のDP,CCをとればいいとはおもう)
         self[i].pp.nexts  = @[maxIndex]
         self[i].pp.orders = self[i].pp.orders[0..devidePos]
+        self[i].endCC = midCC
+        self[i].endDP = midDP
         maxIndex += 1
     # 長さ 0 の端点書き換え
     for i in 0..<self.len():
@@ -187,7 +183,7 @@ proc makeGraph(self:seq[PietProc]) =
   """.replace("\n  ","\n")
   for i,pp in self:
     let size = pp.orders.len()
-    dot &= fmt"""  a{i} [label = "a{i}\n({size})"];""" & "\n"
+    dot &= fmt"""  a{i} [label = "a{i}\n({size})\n{toMinStr(pp.startCC,pp.startDP)}"];""" & "\n"
     for next in pp.nexts:
       dot &= fmt"""  a{i} -> a{next} [label = ""];""" & "\n"
   dot &= "}"

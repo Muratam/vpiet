@@ -181,3 +181,18 @@ proc `[]`*[T](val:EightDirection[T],cc:CC,dp:DP) : T =
       of DPLeft: val.leftR
       of DPUp: val.upR
 
+
+proc toMinStr*(cc:CC,dp:DP):string =
+  return case cc:
+    of CCLeft:
+      case dp:
+      of DPRight: "L➜"
+      of DPDown:  "L⬇"
+      of DPLeft:  "L⬅"
+      of DPUp:    "L⬆"
+    of CCRight:
+      case dp:
+        of DPRight: "R➜"
+        of DPDown:  "R⬇"
+        of DPLeft:  "R⬅"
+        of DPUp:    "R⬆"
