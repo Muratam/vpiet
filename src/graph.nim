@@ -247,6 +247,7 @@ proc newGraph(filename:string) : seq[PietProc] =
       var index = 0
       var emu = newPietEmu(self[index].startDP,self[index].startCC)
       var used = newSeq[bool](self.len())
+      var usedEdge = newSeq[tuple[a,b:int]]()
       var onlyUsed = true
       while true:
         used[index] = true
@@ -254,9 +255,11 @@ proc newGraph(filename:string) : seq[PietProc] =
           onlyUsed = false
           break
         if self[index].realNexts.len() == 0 : break # Terminal
-        index =
+        let nextIndex =
           if self[index].realNexts.len() == 1: self[index].realNexts[0]
           else: self[index].nexts[emu.nextDPCCIndex]
+        usedEdge.add((index,nextIndex))
+        index = nextIndex
         if used[index] : break
       if not onlyUsed:
         proc search(self:var seq[PietProc],i:int) =
@@ -265,11 +268,14 @@ proc newGraph(filename:string) : seq[PietProc] =
             if used[n] : continue
             self.search(n)
         self.search(index)
-        return
       for i in 0..<self.len():
         if used[i]: continue
         for j in 0..<self.len():
           self[j].nexts = self[j].nexts.mapIt(if it == i: -1 else: it)
+      if onlyUsed:
+        for edge in usedEdge:
+          let (a,b) = edge
+          self[a].nexts = @[b]
 
     proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
       proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
@@ -339,28 +345,26 @@ proc newGraph(filename:string) : seq[PietProc] =
         for n in pp.realNexts:
           tos[n] += 1
       for i in 0..<self.len():
-        if tos[i] != 1: continue
+        if tos[i] > 1: continue
         if self[i].realNexts().len() != 1 : continue
         let pre = i
         let pro = self[i].realNexts()[0]
         if pre == pro : continue # やばそう
         self[pre].nexts = self[pro].nexts
         self[pre].orders &= self[pro].orders
-    # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
-    # 更新されなくなるまで繰り返す
     var updated = false
     template normalize() = updated = self.deleteNeedLessNode() or updated
     self.deleteWallNode()
     normalize()
     while true:
       updated = false
+      self.optimize()
+      normalize()
       self.execToDetectNeedLessNode()
       normalize()
       self.execFirstToDetectNeedLessNode()
       normalize()
       self.merge()
-      normalize()
-      self.optimize()
       normalize()
       if not updated: break
 
