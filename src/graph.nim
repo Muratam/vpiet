@@ -178,7 +178,6 @@ proc newGraph(filename:string) : seq[PietProc] =
     result = newSeq[NotDevidedGraph]()
     discard result.search(newCC(),newDP(),0)
     result.to0Indexed()
-
   # グラフを分割 & 圧縮
   proc devideGraph(self:var seq[NotDevidedGraph]) : seq[PietProc] =
     # どこで分割したいかを知るために作成
@@ -230,52 +229,19 @@ proc newGraph(filename:string) : seq[PietProc] =
     return self.mapIt(it.pp)
   # 行かないノードを探して削除
   proc optimizeNext(self:var seq[PietProc]) =
+    proc realNexts(self:PietProc):seq[int] =
+      result = @[]
+      for n in self.nexts:
+        if n < 0 : continue
+        result.add(n)
     proc execToDetectNeedLessNode(self:var seq[PietProc]) =
       for i in 0..<self.len():
         let pp = self[i]
-        if pp.nexts.len() <= 1: continue
+        if pp.realNexts.len() <= 1: continue
         var emu = newPietEmu(pp.startDP,pp.startCC)
         if not emu.execSteps(pp.orders): continue
         let newOne = @[self[i].nexts[emu.nextDPCCIndex]]
-        if newOne.len == self[i].nexts.len(): continue
         self[i].nexts = newOne
-
-    proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
-      proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
-        var isUsed = newSeq[bool](self.len())
-        isUsed[0] = true # 0番は絶対使う
-        for pp in self:
-          for next in pp.nexts:
-            isUsed[next] = true
-        var deletedSum = 0
-        var deletedSums = newSeq[int](self.len())
-        for i in 0..< self.len():
-          if not isUsed[i]: deletedSum += 1
-          deletedSums[i] = deletedSum
-        result = @[]
-        for i in 0..< self.len():
-          if not isUsed[i] :continue
-          result.add(self[i])
-          result[^1].nexts.applyIt(it - deletedSums[it])
-      result = false
-      while true:
-        let newOne = self.deleteImpl()
-        if newOne.len == self.len: return
-        self = newOne
-        result = true
-    proc deleteWallNode(self:var seq[PietProc]) =
-      # nexts: stackTop が {None,0} 1 2 3 ... の順と仮定してよい
-      for i in 0..<self.len():
-        if self[i].orders.anyIt(it.order != Wall): continue
-        if self[i].nexts.len != 1 : continue
-        # i へのノードを先っぽに付け替え
-        for j in 0..<self.len():
-          for n in 0..<self[j].nexts.len():
-            if self[j].nexts[n] != i: continue
-            self[j].nexts[n] = self[i].nexts[0]
-      for i in 0..<self.len():
-        if self[i].orders.len == 0 : continue
-        self[i].orders = self[i].orders.filterIt(it.order != Wall)
 
     proc execFirstToDetectNeedLessNode(self:var seq[PietProc]) =
       var index = 0
@@ -287,13 +253,15 @@ proc newGraph(filename:string) : seq[PietProc] =
         if not emu.execSteps(self[index].orders):
           onlyUsed = false
           break
-        if self[index].nexts.len() == 0 : break # Terminal
-        index = self[index].nexts[emu.nextDPCCIndex]
+        if self[index].realNexts.len() == 0 : break # Terminal
+        index =
+          if self[index].realNexts.len() == 1: self[index].realNexts[0]
+          else: self[index].nexts[emu.nextDPCCIndex]
         if used[index] : break
       if not onlyUsed:
         proc search(self:var seq[PietProc],i:int) =
           used[i] = true
-          for n in self[i].nexts:
+          for n in self[i].realNexts:
             if used[n] : continue
             self.search(n)
         self.search(index)
@@ -303,6 +271,49 @@ proc newGraph(filename:string) : seq[PietProc] =
         for j in 0..<self.len():
           self[j].nexts = self[j].nexts.mapIt(if it == i: -1 else: it)
 
+    proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
+      proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
+        var isUsed = newSeq[bool](self.len())
+        isUsed[0] = true # 0番は絶対使う
+        for pp in self:
+          for next in pp.realNexts:
+            isUsed[next] = true
+        var deletedSum = 0
+        var deletedSums = newSeq[int](self.len())
+        for i in 0..< self.len():
+          if not isUsed[i]: deletedSum += 1
+          deletedSums[i] = deletedSum
+        result = @[]
+        for i in 0..< self.len():
+          if not isUsed[i] :continue
+          result.add(self[i])
+          if result[^1].nexts.len() == 0: continue
+          for n in 0..<result[^1].nexts.len():
+            let next = result[^1].nexts[n]
+            if next < 0 : continue
+            result[^1].nexts[n] = next - deletedSums[next]
+      result = false
+      while true:
+        let newOne = self.deleteImpl()
+        if newOne.len == self.len: return
+        self = newOne
+        result = true
+
+    proc deleteWallNode(self:var seq[PietProc]) =
+      # nexts: stackTop が {None,0} 1 2 3 ... の順と仮定してよい
+      for i in 0..<self.len():
+        if self[i].orders.anyIt(it.order != Wall): continue
+        if self[i].realNexts.len != 1 : continue
+        # i へのノードを先っぽに付け替え
+        for j in 0..<self.len():
+          for n in 0..<self[j].nexts.len():
+            if self[j].nexts[n] != i: continue
+            if self[j].nexts[n] <  0: continue
+            self[j].nexts[n] = self[i].nexts[0]
+      for i in 0..<self.len():
+        if self[i].orders.len == 0 : continue
+        self[i].orders = self[i].orders.filterIt(it.order != Wall)
+
     proc optimize(self:var seq[PietProc]) =
       # {Not,Greater} pointer などは最適化できる
       for i in 0..<self.len():
@@ -311,20 +322,47 @@ proc newGraph(filename:string) : seq[PietProc] =
         if not (self[i].orders[^2].order in [Not,Greater]):continue
         if self[i].nexts.len() != 4: continue
         self[i].nexts = @[self[i].nexts[0],self[i].nexts[1]]
+      discard self.deleteNeedLessNode()
+      # 行き先が全て同じなら一つでよい
+      for i in 0..<self.len():
+        let nexts = self[i].realNexts()
+        if nexts.len() < 1 : continue
+        let dep = nexts.deduplicate()
+        if dep.len() != 1: continue
+        self[i].nexts = dep
 
+    proc merge(self:var seq[PietProc]) =
+      # a -> b -> c を a -> c にマージ (b,c は一つからのみ)
+      # a -> {b1,b2} -> c を a -> c にマージ (全く同じ時のみ)
+      var tos = newSeq[int](self.len())
+      for pp in self:
+        for n in pp.realNexts:
+          tos[n] += 1
+      for i in 0..<self.len():
+        if tos[i] != 1: continue
+        if self[i].realNexts().len() != 1 : continue
+        let pre = i
+        let pro = self[i].realNexts()[0]
+        if pre == pro : continue # やばそう
+        self[pre].nexts = self[pro].nexts
+        self[pre].orders &= self[pro].orders
     # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
     # 更新されなくなるまで繰り返す
+    var updated = false
+    template normalize() = updated = self.deleteNeedLessNode() or updated
     self.deleteWallNode()
-    discard self.deleteNeedLessNode()
-    self.optimize()
-    discard self.deleteNeedLessNode()
+    normalize()
     while true:
+      updated = false
+      self.execToDetectNeedLessNode()
+      normalize()
       self.execFirstToDetectNeedLessNode()
-      discard self.deleteNeedLessNode()
-      self.execToDetectNeedLessNode() # バグありそう
-      if not self.deleteNeedLessNode():break
-
-
+      normalize()
+      self.merge()
+      normalize()
+      self.optimize()
+      normalize()
+      if not updated: break
 
   let indexTo = filename.newPietMap().newIndexTo()
   var graph = indexTo.makeNotDevidedGraph()
