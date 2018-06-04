@@ -35,6 +35,8 @@ proc `$`*(self:seq[PietProc]):string =
 
 proc newGraph(filename:string) : seq[PietProc] =
   # グラフを作成
+  # Nopの分がバグの原因？(違うと思う)
+  # optimizeNextする前は全ての cc dp 関係が正しくあるはず
   type NotDevidedGraph = tuple[pp:PietProc,devideOrderNum:int,endCC:CC,endDP:DP]
   proc `isDevider`(self:NotDevidedGraph) :bool = self.devideOrderNum >= 0
   proc makeNotDevidedGraph(indexTo:IndexTo): seq[NotDevidedGraph] =
@@ -46,37 +48,39 @@ proc newGraph(filename:string) : seq[PietProc] =
       result = graphIndex # 予め返り値を保存
       var (cc,dp,index,orders) = (startCC,startDP,startIndex,newSeq[OrderAndSize]())
       template terminate(nexts :seq[int]= @[]) = self.add(((orders,nexts,startCC,startDP),-1,cc,dp))
-      # WARN: 仮想的にstackを作成して道中のシミュレーションをすれば CC / DP が確定する可能性
       while true:
-        let next = indexTo.nextEdges[index][cc,dp]
         if searched[index][cc,dp].graphIndex > 0:
           let pre = searched[index][cc,dp]
           if pre.orderNum == 0: # 先頭なので直接繋げば分割しなくてよい
+            # selfを参照する際は1-indexedではない！
+            assert cc == self[pre.graphIndex - 1].pp.startcc
+            assert dp == self[pre.graphIndex - 1].pp.startdp
             if orders.len() == 0: # 私は空なのでそもそもこの辺はいらなかった
               graphIndex -= 1
               return pre.graphIndex
             terminate(@[pre.graphIndex])
             return
-          # orders.add((ErrorOrder,pre.orderNum))
+          orders.add((ErrorOrder,pre.orderNum)) # WARN:
           terminate(@[pre.graphIndex])
           self[^1].devideOrderNum = pre.orderNum
           return
         searched[index][cc,dp] = (graphIndex, orders.len())
+        let next = indexTo.nextEdges[index][cc,dp]
         case next.order :
         of Switch: # 2方向の可能性に分岐 & 今までの部分をまでをまとめて辺にする
-          orders.add((next.order,-1))
+          orders.add((next.order,indexTo.blockSize[index]))
           terminate()
-          let i = self.len() - 1
+          let current = self.len() - 1
           for _ in 0..<2:
-            self[i].pp.nexts &= self.search(cc,dp,next.index)
+            self[current].pp.nexts &= self.search(cc,dp,next.index)
             cc.toggle()
           return
         of Pointer: # 4方向の可能性に分岐
-          orders.add((next.order,-1))
+          orders.add((next.order,indexTo.blockSize[index]))
           terminate()
-          let i = self.len() - 1
+          let current = self.len() - 1
           for _ in 0..<4:
-            self[i].pp.nexts &= self.search(cc,dp,next.index)
+            self[current].pp.nexts &= self.search(cc,dp,next.index)
             dp.toggle(1)
           return
         of Wall:
@@ -90,16 +94,15 @@ proc newGraph(filename:string) : seq[PietProc] =
           if isTerminateWall():
             terminate()
             return
+          orders.add((Wall,indexTo.blockSize[index]))
         of Terminate:
           terminate()
           return
         of Nop:
           index = next.index
-          continue
         else:
           orders.add((next.order,indexTo.blockSize[index]))
           index = next.index
-          continue
     # 0-indexに合わせる
     proc to0Indexed(self:var seq[NotDevidedGraph]) =
       for i in 0..<self.len():
@@ -112,7 +115,7 @@ proc newGraph(filename:string) : seq[PietProc] =
 
   # グラフを分割 & 圧縮
   proc devideGraph(self:var seq[NotDevidedGraph]) : seq[PietProc] =
-    # if true: return self.mapIt(it.pp)
+    if true : return self.mapIt(it.pp)
     # どこで分割したいかを知るために作成
     var to = newSeqWith(self.len(),newSeq[tuple[index:int,orderNum:int]]())
     for i in 0..<self.len():
@@ -129,48 +132,49 @@ proc newGraph(filename:string) : seq[PietProc] =
     for i in 0..<self.len():
       if to[i].len() == 0 : continue
       let parent = self[i]
-      assert(not parent.isDevider())
+      if parent.isDevider: raise
       var currentDevidePos = -1
       for devider in to[i]:
         var devidePos = devider.orderNum
         var deviderIndex = devider.index
+        if self[deviderIndex].pp.nexts.len != 1 : raise
         self[deviderIndex].devideOrderNum = -1
         self[deviderIndex].pp.nexts = @[maxIndex]
         if currentDevidePos == devidePos:
-          self[deviderIndex].pp.nexts = @[maxIndex]
           continue
         currentDevidePos = devidePos
         let midCC = self[deviderIndex].endCC
         let midDP = self[deviderIndex].endDP
         let newer = (parent.pp.orders[devidePos..^1],parent.pp.nexts,midCC,midDP)
-        self.add((newer,-1,parent.endCC,parent.endDP)) # WARN: CC,DP is wrong(道中のDP,CCをとればいいとはおもう)
+        self.add((newer,-1,parent.endCC,parent.endDP))
         self[i].pp.nexts  = @[maxIndex]
         self[i].pp.orders = self[i].pp.orders[0..devidePos]
         self[i].endCC = midCC
         self[i].endDP = midDP
         maxIndex += 1
+    return self.mapIt(it.pp)
     # 長さ 0 の端点書き換え
-    for i in 0..<self.len():
-      if self[i].pp.orders.len() > 0 : continue
-      if self[i].pp.nexts.len() == 0:
-        for j in 0..<self.len():
-          self[j].pp.nexts = self[j].pp.nexts.filterIt(it != i)
-      else:
-        let anotherEdge = self[i].pp.nexts[0]
-        for j in 0..<self.len():
-          self[j].pp.nexts.applyIt(if it == i : anotherEdge else: it)
-    # 長さ0のを削除
-    var deletedSum = 0
-    var deletedSums = newSeq[int](self.len())
-    for i in 0..< self.len():
-      if self[i].pp.orders.len() == 0 :
-        deletedSum += 1
-      deletedSums[i] = deletedSum
-    result = @[]
-    for i in 0..< self.len():
-      if self[i].pp.orders.len() == 0 :continue
-      self[i].pp.nexts.applyIt(it - deletedSums[it])
-      result.add(self[i].pp)
+    # for i in 0..<self.len():
+    #   if self[i].pp.orders.len() > 0 : continue
+    #   if self[i].pp.nexts.len() == 0:
+    #     for j in 0..<self.len():
+    #       self[j].pp.nexts = self[j].pp.nexts.filterIt(it != i)
+    #   else:
+    #     let anotherEdge = self[i].pp.nexts[0]
+    #     for j in 0..<self.len():
+    #       self[j].pp.nexts.applyIt(if it == i : anotherEdge else: it)
+    # # 長さ0のを削除
+    # var deletedSum = 0
+    # var deletedSums = newSeq[int](self.len())
+    # for i in 0..< self.len():
+    #   if self[i].pp.orders.len() == 0 :
+    #     deletedSum += 1
+    #   deletedSums[i] = deletedSum
+    # result = @[]
+    # for i in 0..< self.len():
+    #   if self[i].pp.orders.len() == 0 :continue
+    #   self[i].pp.nexts.applyIt(it - deletedSums[it])
+    #   result.add(self[i].pp)
   # 行かないノードを探して削除
   proc optimizeNext(self:var seq[PietProc]) =
     for i in 0..<self.len():
@@ -231,7 +235,7 @@ proc newGraph(filename:string) : seq[PietProc] =
   let indexTo = filename.newPietMap().newIndexTo()
   var graph = indexTo.makeNotDevidedGraph()
   result = graph.devideGraph()
-  result.optimizeNext()
+  # result.optimizeNext()
 
 proc makeGraph(self:seq[PietProc]) =
   var dot = """digraph pietgraph {
@@ -239,13 +243,13 @@ proc makeGraph(self:seq[PietProc]) =
       charset = "UTF-8", fontname = "Menlo", style = "filled"
     ];
     node [
-      shape = square, fontname = "Menlo", style = "filled",
+      shape = box, fontname = "Menlo", style = "filled",
       fontcolor = "#222222", fillcolor = "#ffffff"
     ];
   """.replace("\n  ","\n")
   for i,pp in self:
-    let size = pp.orders.len()
-    dot &= fmt"""  a{i} [label = "a{i}\n({size})\n{toMinStr(pp.startCC,pp.startDP)}"];""" & "\n"
+    let content = "{pp.orders.len}(..{pp.orders[^1]})\n{toMinStr(pp.startCC,pp.startDP)}".fmt
+    dot &= fmt"""  a{i} [label = "a{i}\n{content}"];""" & "\n"
     for next in pp.nexts:
       dot &= fmt"""  a{i} -> a{next} [label = ""];""" & "\n"
   dot &= "}"

@@ -1,0 +1,1 @@
+nimr src/graph.nim $1 > sandbox/hoge.dot && dot -Tpng sandbox/hoge.dot -o sandbox/hoge.png && open sandbox/hoge.png

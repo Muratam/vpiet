@@ -186,13 +186,13 @@ proc toMinStr*(cc:CC,dp:DP):string =
   return case cc:
     of CCLeft:
       case dp:
-      of DPRight: "l→"
-      of DPDown:  "l↑"
-      of DPLeft:  "l←"
-      of DPUp:    "l↑"
+      of DPRight: "→"
+      of DPDown:  "↓"
+      of DPLeft:  "←"
+      of DPUp:    "↑"
     of CCRight:
       case dp:
-      of DPRight: "r➜"
-      of DPDown:  "r↓"
-      of DPLeft:  "r←"
-      of DPUp:    "r↑"
+      of DPRight: "R➜"
+      of DPDown:  "R↓"
+      of DPLeft:  "R←"
+      of DPUp:    "R↑"
