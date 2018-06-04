@@ -303,10 +303,21 @@ proc newGraph(filename:string) : seq[PietProc] =
         for j in 0..<self.len():
           self[j].nexts = self[j].nexts.mapIt(if it == i: -1 else: it)
 
+    proc optimize(self:var seq[PietProc]) =
+      # {Not,Greater} pointer などは最適化できる
+      for i in 0..<self.len():
+        if self[i].orders.len() < 2: continue
+        if self[i].orders[^1].order != Pointer: continue
+        if not (self[i].orders[^2].order in [Not,Greater]):continue
+        if self[i].nexts.len() != 4: continue
+        self[i].nexts = @[self[i].nexts[0],self[i].nexts[1]]
 
     # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
     # 更新されなくなるまで繰り返す
     self.deleteWallNode()
+    discard self.deleteNeedLessNode()
+    self.optimize()
+    discard self.deleteNeedLessNode()
     while true:
       self.execFirstToDetectNeedLessNode()
       discard self.deleteNeedLessNode()
@@ -334,7 +345,7 @@ proc makeGraph(self:seq[PietProc]) =
     let order =
       if pp.orders.len() == 1: $(pp.orders[0])
       elif pp.orders.len() == 0: ""
-      elif pp.orders.len() > 100: "{pp.orders[0..40]}..{pp.orders[^40..^1]}".fmt()
+      elif pp.orders.len() > 20: "{pp.orders[0..8]}..{pp.orders[^8..^1]}".fmt()
       else : "{pp.orders}".fmt()
     let ccdp = "{toMinStr(pp.startCC,pp.startDP)}".fmt
     var content = "({pp.orders.len()}) {ccdp}\n{order}".fmt
