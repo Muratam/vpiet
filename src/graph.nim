@@ -152,7 +152,7 @@ proc newGraph(filename:string) : seq[PietProc] =
         let newer = (parent.pp.orders[devidePos..^1],parent.pp.nexts,midCC,midDP)
         self.add((newer,-1,parent.endCC,parent.endDP))
         self[i].pp.nexts  = @[maxIndex]
-        self[i].pp.orders = self[i].pp.orders[0..devidePos]
+        self[i].pp.orders = self[i].pp.orders[0..devidePos-1]
         self[i].endCC = midCC
         self[i].endDP = midDP
         maxIndex += 1
