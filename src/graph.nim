@@ -60,7 +60,7 @@ proc newGraph(filename:string) : seq[PietProc] =
               return pre.graphIndex
             terminate(@[pre.graphIndex])
             return
-          orders.add((ErrorOrder,pre.orderNum)) # WARN:
+          # orders.add((ErrorOrder,pre.orderNum))
           terminate(@[pre.graphIndex])
           self[^1].devideOrderNum = pre.orderNum
           return
@@ -93,9 +93,11 @@ proc newGraph(filename:string) : seq[PietProc] =
               if next.order != Wall: return false
           if isTerminateWall():
             terminate()
+            orders.add((Terminate,indexTo.blockSize[index]))
             return
           orders.add((Wall,indexTo.blockSize[index]))
         of Terminate:
+          orders.add((Terminate,indexTo.blockSize[index]))
           terminate()
           return
         of Nop:
@@ -115,7 +117,6 @@ proc newGraph(filename:string) : seq[PietProc] =
 
   # グラフを分割 & 圧縮
   proc devideGraph(self:var seq[NotDevidedGraph]) : seq[PietProc] =
-    if true : return self.mapIt(it.pp)
     # どこで分割したいかを知るために作成
     var to = newSeqWith(self.len(),newSeq[tuple[index:int,orderNum:int]]())
     for i in 0..<self.len():
@@ -132,12 +133,12 @@ proc newGraph(filename:string) : seq[PietProc] =
     for i in 0..<self.len():
       if to[i].len() == 0 : continue
       let parent = self[i]
-      if parent.isDevider: raise
+      assert(not parent.isDevider)
       var currentDevidePos = -1
       for devider in to[i]:
         var devidePos = devider.orderNum
         var deviderIndex = devider.index
-        if self[deviderIndex].pp.nexts.len != 1 : raise
+        assert self[deviderIndex].pp.nexts.len == 1
         self[deviderIndex].devideOrderNum = -1
         self[deviderIndex].pp.nexts = @[maxIndex]
         if currentDevidePos == devidePos:
@@ -152,29 +153,28 @@ proc newGraph(filename:string) : seq[PietProc] =
         self[i].endCC = midCC
         self[i].endDP = midDP
         maxIndex += 1
-    return self.mapIt(it.pp)
     # 長さ 0 の端点書き換え
-    # for i in 0..<self.len():
-    #   if self[i].pp.orders.len() > 0 : continue
-    #   if self[i].pp.nexts.len() == 0:
-    #     for j in 0..<self.len():
-    #       self[j].pp.nexts = self[j].pp.nexts.filterIt(it != i)
-    #   else:
-    #     let anotherEdge = self[i].pp.nexts[0]
-    #     for j in 0..<self.len():
-    #       self[j].pp.nexts.applyIt(if it == i : anotherEdge else: it)
-    # # 長さ0のを削除
-    # var deletedSum = 0
-    # var deletedSums = newSeq[int](self.len())
-    # for i in 0..< self.len():
-    #   if self[i].pp.orders.len() == 0 :
-    #     deletedSum += 1
-    #   deletedSums[i] = deletedSum
-    # result = @[]
-    # for i in 0..< self.len():
-    #   if self[i].pp.orders.len() == 0 :continue
-    #   self[i].pp.nexts.applyIt(it - deletedSums[it])
-    #   result.add(self[i].pp)
+    for i in 0..<self.len():
+      if self[i].pp.orders.len() > 0 : continue
+      if self[i].pp.nexts.len() == 0:
+        for j in 0..<self.len():
+          self[j].pp.nexts = self[j].pp.nexts.filterIt(it != i)
+      else:
+        let anotherEdge = self[i].pp.nexts[0]
+        for j in 0..<self.len():
+          self[j].pp.nexts.applyIt(if it == i : anotherEdge else: it)
+    # 長さ0のを削除
+    var deletedSum = 0
+    var deletedSums = newSeq[int](self.len())
+    for i in 0..< self.len():
+      if self[i].pp.orders.len() == 0 :
+        deletedSum += 1
+      deletedSums[i] = deletedSum
+    result = @[]
+    for i in 0..< self.len():
+      if self[i].pp.orders.len() == 0 :continue
+      self[i].pp.nexts.applyIt(it - deletedSums[it])
+      result.add(self[i].pp)
   # 行かないノードを探して削除
   proc optimizeNext(self:var seq[PietProc]) =
     for i in 0..<self.len():
@@ -235,7 +235,7 @@ proc newGraph(filename:string) : seq[PietProc] =
   let indexTo = filename.newPietMap().newIndexTo()
   var graph = indexTo.makeNotDevidedGraph()
   result = graph.devideGraph()
-  # result.optimizeNext()
+  result.optimizeNext()
 
 proc makeGraph(self:seq[PietProc]) =
   var dot = """digraph pietgraph {
@@ -248,7 +248,7 @@ proc makeGraph(self:seq[PietProc]) =
     ];
   """.replace("\n  ","\n")
   for i,pp in self:
-    let content = "{pp.orders.len}(..{pp.orders[^1]})\n{toMinStr(pp.startCC,pp.startDP)}".fmt
+    let content = "{pp.orders}\n{toMinStr(pp.startCC,pp.startDP)}".fmt
     dot &= fmt"""  a{i} [label = "a{i}\n{content}"];""" & "\n"
     for next in pp.nexts:
       dot &= fmt"""  a{i} -> a{next} [label = ""];""" & "\n"
