@@ -60,6 +60,7 @@ proc step(self:PietEmu,info:OrderWithInfo) : bool =
     if self.stack.len() < 1 : return false
     let it {.inject.} = self.stack.pop()
     op
+  self.nextDPCCIndex = 0
   case info.order
   of Add: binaryIt(self.stack.push(b + a))
   of Sub: binaryIt(self.stack.push(b - a))
@@ -226,8 +227,7 @@ proc newGraph(filename:string) : seq[PietProc] =
     return self.mapIt(it.pp)
   # 行かないノードを探して削除
   proc optimizeNext(self:var seq[PietProc]) =
-    proc execToDetectNeedLessNode(self:var seq[PietProc]) : bool =
-      result = false
+    proc execToDetectNeedLessNode(self:var seq[PietProc]) =
       for i in 0..<self.len():
         let pp = self[i]
         if pp.nexts.len() <= 1: continue
@@ -236,11 +236,11 @@ proc newGraph(filename:string) : seq[PietProc] =
         let newOne = @[self[i].nexts[emu.nextDPCCIndex]]
         if newOne.len == self[i].nexts.len(): continue
         self[i].nexts = newOne
-        result = true
 
     proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
       proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
         var isUsed = newSeq[bool](self.len())
+        isUsed[0] = true # 0番は絶対使う
         for pp in self:
           for next in pp.nexts:
             isUsed[next] = true
@@ -274,13 +274,25 @@ proc newGraph(filename:string) : seq[PietProc] =
         if self[i].orders.len == 0 : continue
         self[i].orders = self[i].orders.filterIt(it.order != Wall)
 
-
+    proc execFirstToDetectNeedLessNode(self:var seq[PietProc]) =
+      var index = 0
+      var emu = newPietEmu(self[index].startDP,self[index].startCC)
+      while true:
+        # echo emu.stack
+        # echo self[index].orders
+        if not emu.execSteps(self[index].orders): break
+        # echo index,"->",emu.nextDPCCIndex
+        if emu.nextDPCCIndex == -1:
+          # echo self[index].orders
+          break
+        index = self[index].nexts[emu.nextDPCCIndex]
 
     # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
     # 更新されなくなるまで繰り返す
     while true:
       # echo self.len()
-      discard self.execToDetectNeedLessNode()
+      # self.execToDetectNeedLessNode()
+      # self.execFirstToDetectNeedLessNode()
       self.deleteWallNode()
       if not self.deleteNeedLessNode():break
 
