@@ -174,12 +174,15 @@ proc newGraph(filename:string) : seq[PietProc] =
       for i in 0..<self.len():
         let pp = self[i]
         if pp.nexts.len() <= 1: continue
-        proc testPiet():tuple[suceess:bool,cc:CC,dp:DP] =
+        var nextDPCCIndex = 0
+        proc testPiet(): bool =
           var dp = pp.startDP
           var cc = pp.startCC
           var stack = newStack[int]()
           proc step(info:OrderWithInfo) : bool =
             result = true
+            cc = info.cc
+            dp = info.dp
             template binaryIt(op) =
               if stack.len() < 2 : return false
               let a {.inject.}= stack.pop()
@@ -199,8 +202,8 @@ proc newGraph(filename:string) : seq[PietProc] =
             of Push: stack.push(info.size)
             of Pop: unaryIt((discard))
             of Not: unaryIt(stack.push(if it > 0 : 0 else: 1))
-            of Pointer: unaryIt(dp.toggle(it))
-            of Switch: unaryIt(if it mod 2 == 1 : cc.toggle())
+            of Pointer: unaryIt((nextDPCCIndex = ((it mod 4) + 4 mod 4)))
+            of Switch:  unaryIt((nextDPCCIndex = ((it mod 2) + 2 mod 2)))
             of InC: return false #
             of InN: return false
             of OutN: discard
@@ -216,16 +219,12 @@ proc newGraph(filename:string) : seq[PietProc] =
               for i in 0..<b: stack.push(roll[(i + a) mod b])
             of Wall:discard
             else:discard
-            if not(info.order in [Pointer,Switch]):
-              cc = info.cc
-              dp = info.dp
           for order in pp.orders:
-            if not step(order): return (false,cc,dp)
-          return (true,cc,dp)
-        let (success,endCC,endDP) = testPiet()
-        if not success: continue
-        let newOne = self[i].nexts.filterIt(self[it].startCC == endCC and self[it].startDP == endDP)
-        # ただ一通りに決まる時がある
+            if not step(order): return false
+          return true
+        if not testPiet(): continue
+        let newOne = @[self[i].nexts[nextDPCCIndex]]
+        # ただ一通りに決まる時がある(最適化のせいでそうでないときもあるかも)
         if newOne.len == self[i].nexts.len(): continue
         result = true
         self[i].nexts = newOne
@@ -271,6 +270,7 @@ proc newGraph(filename:string) : seq[PietProc] =
     # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
     # 更新されなくなるまで繰り返す
     while true:
+      # echo self.len()
       discard self.execToDetectNeedLessNode()
       self.deleteWallNode()
       if not self.deleteNeedLessNode():break
