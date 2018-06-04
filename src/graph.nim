@@ -19,6 +19,7 @@ proc `$`*(self:OrderWithInfo):string =
   if self.order == Pointer : return "DP".fmt
   if self.order == Switch : return "CC".fmt
   if self.order == Wall : return "#".fmt
+  if self.order == Terminate : return "END"
   if self.order == ErrorOrder : return "?{self.size}".fmt
   return $(self.order)
 proc `$`*(self:seq[PietProc]):string =
@@ -52,12 +53,14 @@ proc step(self:PietEmu,info:OrderWithInfo) : bool =
   self.cc = info.cc
   self.dp = info.dp
   template binaryIt(op) =
-    if self.stack.len() < 2 : return false
+    if self.stack.len() < 2 :
+      return false
     let a {.inject.}= self.stack.pop()
     let b {.inject.}= self.stack.pop()
     op
   template unaryIt(op) =
-    if self.stack.len() < 1 : return false
+    if self.stack.len() < 1 :
+      return false
     let it {.inject.} = self.stack.pop()
     op
   self.nextDPCCIndex = 0
@@ -65,18 +68,18 @@ proc step(self:PietEmu,info:OrderWithInfo) : bool =
   of Add: binaryIt(self.stack.push(b + a))
   of Sub: binaryIt(self.stack.push(b - a))
   of Mul: binaryIt(self.stack.push(b * a))
-  of Div: binaryIt(self.stack.push(b div a))
+  of Div: binaryIt(self.stack.push(b div a)) # 0 除算は無視すべき
   of Mod: binaryIt(self.stack.push(b mod a))
   of Greater: binaryIt(self.stack.push(if b > a : 1 else: 0))
   of Push: self.stack.push(info.size)
   of Pop: unaryIt((discard))
   of Not: unaryIt(self.stack.push(if it > 0 : 0 else: 1))
-  of Pointer: unaryIt((self.nextDPCCIndex = ((it mod 4) + 4 mod 4)))
-  of Switch:  unaryIt((self.nextDPCCIndex = ((it mod 2) + 2 mod 2)))
+  of Pointer: unaryIt((self.nextDPCCIndex = (((it mod 4) + 4) mod 4)))
+  of Switch:  unaryIt((self.nextDPCCIndex = (((it mod 2) + 2) mod 2)))
   of InC: return false #
   of InN: return false
-  of OutN: discard
-  of OutC: discard
+  of OutN: unaryIt((discard))
+  of OutC: unaryIt((discard))
   of Dup: unaryIt((self.stack.push(it);self.stack.push(it)))
   of Roll:
     if self.stack.len() < 3 : return false
@@ -277,30 +280,43 @@ proc newGraph(filename:string) : seq[PietProc] =
     proc execFirstToDetectNeedLessNode(self:var seq[PietProc]) =
       var index = 0
       var emu = newPietEmu(self[index].startDP,self[index].startCC)
+      var used = newSeq[bool](self.len())
+      var onlyUsed = true
       while true:
-        # echo emu.stack
-        # echo self[index].orders
-        if not emu.execSteps(self[index].orders): break
-        # echo index,"->",emu.nextDPCCIndex
-        if emu.nextDPCCIndex == -1:
-          # echo self[index].orders
+        used[index] = true
+        if not emu.execSteps(self[index].orders):
+          onlyUsed = false
           break
+        if self[index].nexts.len() == 0 : break # Terminal
         index = self[index].nexts[emu.nextDPCCIndex]
+        if used[index] : break
+      if not onlyUsed:
+        proc search(self:var seq[PietProc],i:int) =
+          used[i] = true
+          for n in self[i].nexts:
+            if used[n] : continue
+            self.search(n)
+        self.search(index)
+        return
+      for i in 0..<self.len():
+        if used[i]: continue
+        for j in 0..<self.len():
+          self[j].nexts = self[j].nexts.mapIt(if it == i: -1 else: it)
+
 
     # 誰からも参照されない 0 番以外のものを更新されなくなるまで消す
     # 更新されなくなるまで繰り返す
+    self.deleteWallNode()
     while true:
-      # echo self.len()
-      # self.execToDetectNeedLessNode()
-      # self.execFirstToDetectNeedLessNode()
-      self.deleteWallNode()
+      self.execFirstToDetectNeedLessNode()
+      discard self.deleteNeedLessNode()
+      self.execToDetectNeedLessNode() # バグありそう
       if not self.deleteNeedLessNode():break
 
 
 
   let indexTo = filename.newPietMap().newIndexTo()
   var graph = indexTo.makeNotDevidedGraph()
-  # return graph.mapIt(it.pp)
   result = graph.devideGraph()
   result.optimizeNext()
 
@@ -318,13 +334,14 @@ proc makeGraph(self:seq[PietProc]) =
     let order =
       if pp.orders.len() == 1: $(pp.orders[0])
       elif pp.orders.len() == 0: ""
-      else: "{pp.orders[0]}..{pp.orders[^1]}".fmt()
-      # else : "{pp.orders}".fmt()
+      elif pp.orders.len() > 100: "{pp.orders[0..40]}..{pp.orders[^40..^1]}".fmt()
+      else : "{pp.orders}".fmt()
     let ccdp = "{toMinStr(pp.startCC,pp.startDP)}".fmt
     var content = "({pp.orders.len()}) {ccdp}\n{order}".fmt
     if i == 0: content = "START\n" & content
-    dot &= fmt"""  a{i} [label = "{content}"];""" & "\n"
+    dot &= fmt"""  a{i} [label = "a{i}\n{content}"];""" & "\n"
     for next in pp.nexts:
+      if next < 0: continue # ダミーノード()
       dot &= fmt"""  a{i} -> a{next} [label = ""];""" & "\n"
   dot &= "}"
   echo dot
