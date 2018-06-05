@@ -329,6 +329,23 @@ proc newGraph(filename:string) : seq[PietProc] =
         if self[i].nexts.len() != 4: continue
         self[i].nexts = @[self[i].nexts[0],self[i].nexts[1]]
       discard self.deleteNeedLessNode()
+      # {Push,DP} も最適化できる
+      for i in 0..<self.len():
+        if self[i].orders.len() < 2: continue
+        if not (self[i].orders[^2].order == Push):continue
+        if self[i].orders[^1].order != Pointer: continue
+        if self[i].nexts.len() != 4: continue
+        let n = ((self[i].orders[^2].size + 4) mod 4)
+        self[i].nexts = @[self[i].nexts[n]]
+      # {Push,CC} も最適化できる
+      for i in 0..<self.len():
+        if self[i].orders.len() < 2: continue
+        if not (self[i].orders[^2].order == Push):continue
+        if self[i].orders[^1].order != Switch: continue
+        if self[i].nexts.len() != 2: continue
+        let n = ((self[i].orders[^2].size + 2) mod 2)
+        self[i].nexts = @[self[i].nexts[n]]
+      discard self.deleteNeedLessNode()
       # 行き先が全て同じなら一つでよい
       for i in 0..<self.len():
         let nexts = self[i].realNexts()
@@ -339,19 +356,25 @@ proc newGraph(filename:string) : seq[PietProc] =
 
     proc merge(self:var seq[PietProc]) =
       # a -> b -> c を a -> c にマージ (b,c は一つからのみ)
-      # a -> {b1,b2} -> c を a -> c にマージ (全く同じ時のみ)
+      # a -> {b1,b2} -> c を a -> c にマージ (全く同じ時のみ)したい
       var tos = newSeq[int](self.len())
       for pp in self:
         for n in pp.realNexts:
           tos[n] += 1
       for i in 0..<self.len():
         if tos[i] > 1: continue
-        if self[i].realNexts().len() != 1 : continue
         let pre = i
-        let pro = self[i].realNexts()[0]
-        if pre == pro : continue # やばそう
-        self[pre].nexts = self[pro].nexts
-        self[pre].orders &= self[pro].orders
+        if self[pre].realNexts().len() == 1 :
+          let pro = self[pre].realNexts()[0]
+          if pre == pro : continue # やばそう
+          self[pre].nexts = self[pro].nexts
+          self[pre].orders &= self[pro].orders
+        elif self[i].realNexts().len() == 2:
+          # 命令列が全く同じでリンク先も全く同じで私からしかリンクされていないもの
+          let pro0 = self[pre].realNexts()[0]
+          let pro1 = self[pre].realNexts()[1]
+
+
     var updated = false
     template normalize() = updated = self.deleteNeedLessNode() or updated
     self.deleteWallNode()
