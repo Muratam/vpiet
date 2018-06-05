@@ -355,24 +355,55 @@ proc newGraph(filename:string) : seq[PietProc] =
         self[i].nexts = dep
 
     proc merge(self:var seq[PietProc]) =
-      # a -> b -> c を a -> c にマージ (b,c は一つからのみ)
+      # {*} -> b -> c を {*} -> [b+c] にマージ (b,c は一つからのみ)
       # a -> {b1,b2} -> c を a -> c にマージ (全く同じ時のみ)したい
       var tos = newSeq[int](self.len())
       for pp in self:
         for n in pp.realNexts:
           tos[n] += 1
       for i in 0..<self.len():
-        if tos[i] > 1: continue
         let pre = i
+        # a6(13)[+3 .. ON] <-> a32(5)[+32..Gt]
+        # if tos[pre] > 1: continue # WARN: 実はいらない説
         if self[pre].realNexts().len() == 1 :
           let pro = self[pre].realNexts()[0]
           if pre == pro : continue # やばそう
           self[pre].nexts = self[pro].nexts
           self[pre].orders &= self[pro].orders
-        elif self[i].realNexts().len() == 2:
+        elif self[i].realNexts().len() >= 2:
+          if tos[pre] > 1: continue
+          # >= 2 に対しても起こりうる
           # 命令列が全く同じでリンク先も全く同じで私からしかリンクされていないもの
-          let pro0 = self[pre].realNexts()[0]
-          let pro1 = self[pre].realNexts()[1]
+          proc getIsSameNode(self:var seq[PietProc],pro0Index,pro1Index:int):bool =
+            let pro0 = self[pro0Index]
+            let pro1 = self[pro1Index]
+            if pro0.orders.len() != pro1.orders.len() : return false
+            if pro0.nexts != pro1.nexts : return false
+            proc equals(a,b:OrderWithInfo):bool =
+              if a.order != b.order : return false
+              if a.order == Push and a.size != b.size : return false
+              return true
+            return zip(pro0.orders,pro1.orders).allIt(equals(it[0],it[1]))
+          if self[i].realNexts().len() == 2:
+            let i1 = self[pre].realNexts()[0]
+            let i2 = self[pre].realNexts()[1]
+            if not self.getIsSameNode(i1,i2): continue
+            self[pre].nexts = @[i1]
+          elif self[i].realNexts().len() == 4:
+            proc searchSame(self:var seq[PietProc]) =
+              for i12 in [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]:
+                let (a,b) = i12
+                let i1 = self[pre].realNexts()[a]
+                let i2 = self[pre].realNexts()[b]
+                if not self.getIsSameNode(i1,i2): continue
+                self[pre].nexts[a] = self[pre].nexts[b]
+                # return
+            self.searchSame()
+      # 自己ループ系も直したい
+
+
+
+
 
 
     var updated = false
@@ -407,18 +438,22 @@ proc makeGraph(self:seq[PietProc]) =
     ];
   """.replace("\n  ","\n")
   for i,pp in self:
+    const maxShow = 6
     let order =
       if pp.orders.len() == 1: $(pp.orders[0])
       elif pp.orders.len() == 0: ""
-      elif pp.orders.len() > 20: "{pp.orders[0..8]}..{pp.orders[^8..^1]}".fmt()
+      elif pp.orders.len() > maxShow:
+        "{pp.orders[0..<(maxShow div 2)]} ~\n {pp.orders[^(maxShow div 2)..^1]}".fmt()
       else : "{pp.orders}".fmt()
     let ccdp = "{toMinStr(pp.startCC,pp.startDP)}".fmt
     var content = "({pp.orders.len()}) {ccdp}\n{order}".fmt
     if i == 0: content = "START\n" & content
-    dot &= fmt"""  a{i} [label = "a{i}\n{content}"];""" & "\n"
-    for next in pp.nexts:
+    dot &= fmt"""  a{i} [label = "a{i}{content}"];""" & "\n"
+    for n in 0..<pp.nexts.len():
+      let next = pp.nexts[n]
       if next < 0: continue # ダミーノード()
-      dot &= fmt"""  a{i} -> a{next} [label = ""];""" & "\n"
+      let label = if n == 0 : "" else: $n
+      dot &= fmt"""  a{i} -> a{next} [label = "{label}"];""" & "\n"
   dot &= "}"
   echo dot
 
