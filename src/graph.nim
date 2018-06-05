@@ -310,9 +310,11 @@ proc newGraph(filename:string) : seq[PietProc] =
         for j in 0..<self.len():
           self[j].nexts = self[j].nexts.mapIt(if it == i: -1 else: it)
       if onlyUsed:
+        for i in 0..<self.len():
+          self[i].nexts = @[]
         for edge in usedEdge:
           let (a,b) = edge
-          self[a].nexts = @[b]
+          self[a].nexts &= b
 
     proc deleteNeedLessNode(self:var seq[PietProc]) : bool =
       proc deleteImpl(self:seq[PietProc]): seq[PietProc] =
