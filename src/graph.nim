@@ -234,6 +234,43 @@ proc newGraph(filename:string) : seq[PietProc] =
       for n in self.nexts:
         if n < 0 : continue
         result.add(n)
+
+    proc equals(a,b:OrderWithInfo):bool =
+      if a.order != b.order : return false
+      if a.order == Push and a.size != b.size : return false
+      return true
+
+    proc getIsSameNode(self:var seq[PietProc],pro0Index,pro1Index:int):bool =
+      # 命令列が全く同じでリンク先も全く同じで私からしかリンクされていないもの
+      let pro0 = self[pro0Index]
+      let pro1 = self[pro1Index]
+      if pro0.orders.len() != pro1.orders.len() : return false
+      if pro0.nexts != pro1.nexts : return false
+      return zip(pro0.orders,pro1.orders).allIt(equals(it[0],it[1]))
+
+    proc getIsCyclicSameNode(self:var seq[PietProc],pro0Index,pro1Index:int):bool =
+      # 命令列が全く同じでリンク先も全く同じで私からしかリンクされていないもの
+      let pro0 = self[pro0Index]
+      let pro1 = self[pro1Index]
+      if pro0.orders.len() != pro1.orders.len() : return false
+      if pro0.nexts != pro1.nexts :
+        let pro0Nexts = pro0.realNexts()
+        let pro1Nexts = pro1.realNexts()
+        if pro0Nexts.len() != pro1Nexts.len() : return false
+        if pro0Nexts.len() != 2: return false
+        if pro0Nexts[0] == pro1Nexts[0] and
+           pro0Nexts[1] == pro1Index and pro1Nexts[1] == pro0Index: discard
+        elif pro0Nexts[1] == pro1Nexts[1] and
+           pro0Nexts[0] == pro1Index and pro1Nexts[0] == pro0Index: discard
+        elif pro0Nexts[0] == pro1Nexts[0] and
+           pro0Nexts[1] == pro0Index and pro1Nexts[1] == pro1Index: discard
+        elif pro0Nexts[1] == pro1Nexts[1] and
+           pro0Nexts[0] == pro0Index and pro1Nexts[0] == pro1Index: discard
+        else: return false
+      return zip(pro0.orders,pro1.orders).allIt(equals(it[0],it[1]))
+
+
+
     proc execToDetectNeedLessNode(self:var seq[PietProc]) =
       for i in 0..<self.len():
         let pp = self[i]
@@ -371,19 +408,8 @@ proc newGraph(filename:string) : seq[PietProc] =
           self[pre].nexts = self[pro].nexts
           self[pre].orders &= self[pro].orders
         elif self[i].realNexts().len() >= 2:
-          if tos[pre] > 1: continue
+          # if tos[pre] > 1: continue # WARN: 実はいらない説
           # >= 2 に対しても起こりうる
-          # 命令列が全く同じでリンク先も全く同じで私からしかリンクされていないもの
-          proc getIsSameNode(self:var seq[PietProc],pro0Index,pro1Index:int):bool =
-            let pro0 = self[pro0Index]
-            let pro1 = self[pro1Index]
-            if pro0.orders.len() != pro1.orders.len() : return false
-            if pro0.nexts != pro1.nexts : return false
-            proc equals(a,b:OrderWithInfo):bool =
-              if a.order != b.order : return false
-              if a.order == Push and a.size != b.size : return false
-              return true
-            return zip(pro0.orders,pro1.orders).allIt(equals(it[0],it[1]))
           if self[i].realNexts().len() == 2:
             let i1 = self[pre].realNexts()[0]
             let i2 = self[pre].realNexts()[1]
@@ -399,14 +425,25 @@ proc newGraph(filename:string) : seq[PietProc] =
                 self[pre].nexts[a] = self[pre].nexts[b]
                 # return
             self.searchSame()
-      # 自己ループ系も直したい
-
+    proc deleteSameNode(self:var seq[PietProc]) =
+      # 全く同じノード(命令が同じで出力先も同じ)も消したい
+      # 自己ループも消えてくれそう -> (htmlserver)相互参照型になる
+      for i in 0..<self.len():
+        for j in (i+1)..<self.len():
+          if not self.getIsCyclicSameNode(i,j): continue
+          # 自分へのリンクを全てもう片方へと変えればよい
+          for k in 0..<self.len():
+            for n in 0..<self[k].nexts.len():
+              let next = self[k].nexts[n]
+              if next < 0 : continue
+              if next == i : self[k].nexts[n] = j
 
 
 
 
 
     var updated = false
+    # TODO: 実行結果が合っていればよい！
     template normalize() = updated = self.deleteNeedLessNode() or updated
     self.deleteWallNode()
     normalize()
@@ -419,6 +456,8 @@ proc newGraph(filename:string) : seq[PietProc] =
       self.execFirstToDetectNeedLessNode()
       normalize()
       self.merge()
+      normalize()
+      self.deleteSameNode()
       normalize()
       if not updated: break
 
