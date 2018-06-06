@@ -26,3 +26,8 @@ $ vpiet -e <filename>  # execute
 
 # FAQ
 - codel size -> always 1
+- unicode -> utf-8
+- divide by zero / modulo by zero -> error (undefined behaviour)
+- negative depth roll /  greater than stack size roll -> error (undefined behaviour)
+- inn inc at `100 a` -> [100,20(SPACE)]
+- inn inn at `100 200` -> [100,200]
