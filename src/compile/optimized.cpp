@@ -47,6 +47,7 @@ inline void twice() {
   int *new_stack = (int *)malloc(sizeof(int) * maxsize * 2);
   for (int i = 0; i < maxsize; i++) new_stack[i] = stack[i];
   free(stack);
+  stack = new_stack;
   maxsize *= 2;
 }
 #define OP2(op)        \
