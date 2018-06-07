@@ -4,7 +4,7 @@ int main() {
   inc();
   dup();
   outn();
-  push(32);
+  push(72);
   outc();
   outc();
   return terminate();

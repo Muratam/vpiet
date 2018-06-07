@@ -12,20 +12,45 @@ int inn_impl() {
   return tmp;
 }
 int inc_impl() {
-  const unsigned char map[6] = {0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01};
+  const unsigned char mask[6] = {0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01};
   unsigned char c = 0;
   scanf("%c", &c);
-  int type = 0;
-  for (; type < 6 && c >= 0xff - map[type]; type++) {
+  int type = 0;  // バイト数タイプ判定(type = byte数 - 1)
+  for (; type < 6 && c >= 0xff - mask[type]; type++) {
   }
-  int result = (c & map[type]) << type * 6;
+  // utf-8での対応するマスクをかけてビットシフト
+  int result = (c & mask[type]) << type * 6;
   for (int i = 1; i <= type; i++) {
     scanf("%c", &c);
     result += (c & 0x3f) << (6 * (type - i));
   }
   return result;
 }
-void outc_impl(int x) { printf("%c", x); }
+void outc_impl(int x) {
+#define MY_DECODE_UTF8(n) \
+  for (int i = 1; i <= n; i++) str[i] = 0x80 | ((x >> 6 * (n - i)) & 0x3f);
+  unsigned char str[6] = {};
+  if (x < 0x80) {
+    str[0] = x;
+  } else if (x < 0x800) {
+    str[0] = 0xd0 | ((x >> 6) & 0x1f);
+    MY_DECODE_UTF8(1);
+  } else if (x < 0x10000) {
+    str[0] = 0xe0 | ((x >> 12) & 0x0f);
+    MY_DECODE_UTF8(2);
+  } else if (x < 0x200000) {
+    str[0] = 0xf0 | ((x >> 18) & 0x07);
+    MY_DECODE_UTF8(3);
+  } else if (x < 0x4000000) {
+    str[0] = 0xfb | ((x >> 24) & 0x03);
+    MY_DECODE_UTF8(4);
+  } else {
+    str[0] = 0xfd | ((x >> 30) & 0x01);
+    MY_DECODE_UTF8(5);
+  }
+  printf("%s", str);
+#undef MY_DECODE_UTF8
+}
 
 inline void twice() {
   int *new_stack = (int *)malloc(sizeof(int) * maxsize * 2);
