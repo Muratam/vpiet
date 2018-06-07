@@ -1,23 +1,21 @@
 import common
 import pietbase
 import osproc
-# indexを元に実行するPietCoreとは異なり
-# orders を元に実行する
+# indexを元に実行するPietCoreとは異なりorders を元に実行する
 # WARN: いい感じになってきたらPietCoreも置き換えておきたい(?:リアルタイム実行？)
 #     : if を自動で消したりPushの量を勝手に最適化したりしたい
 #     : PietMap -> IndexTo の時点で Piet08 or KMC-Piet を選べる
-#     :
+#                                -> Viet -> Exec / Debug
 # PietMap -> IndexTo -> PietCore         -> Exec
 #                    -> Graph -> PietEmu -> Exec
-# for i,pp in pps: みたいなのそう言えば書いてないじゃん
 # TODO:まずは普通に動かして,次にどんどん最適化して,最終的にPietCoreを置き換える
 # 最適化しすぎると処理を追えなくなる？
-
-# 解釈について
-# IN,OUTC: UTF-8 でよい(12354 <-> あ というのは同じなので)
-# {DIV/MOD}: 0除算のとき --> 未定義動作(無視が推奨)
-# ROLL: 深さ(b) < 0 / 深さ(b) < stacklen
 # KMC-Piet <-> Piet08
+
+# TODO: 生成したプログラムにバグがないか確かめる
+#     : htmlserver /
+#     : .vpiet -> .png -> .c を出来るか試す
+
 
 type
   OrderWithInfo* = tuple[order:Order,size:int,dp:DP,cc:CC]
@@ -103,7 +101,7 @@ proc step*(self:PietEmu,info:OrderWithInfo) : bool =
     if b > self.stack.len(): return false
     var roll = newSeq[int]()
     for i in 0..<b: roll.add(self.stack.pop())
-    for i in 0..<b: self.stack.push(roll[(i + a) mod b])
+    for i in 0..<b: self.stack.push(roll[(- i - 1 + a + b) mod b])
   of Wall:discard
   else:discard
 proc execSteps*(emu:var PietEmu,orders:seq[OrderWithInfo]): bool =
@@ -120,8 +118,8 @@ proc compileToCpp*(self:seq[PietProc]) : string =
     of Add: return "add();"
     of Sub: return "sub();"
     of Mul: return "mul();"
-    of Div: return "div_();" # 0 除算は無視すべき?
-    of Mod: return "mod();" # 0 除算は無視すべき?
+    of Div: return "div_();"
+    of Mod: return "mod();"
     of Greater: return "greater();"
     of Push: return "push({order.size});".fmt()
     of Pop: return "pop();"
@@ -143,6 +141,7 @@ proc compileToCpp*(self:seq[PietProc]) : string =
     result &= "a{i}:\n".fmt()
     for order in pp.orders:
       result &= "  {order.toCpp()}\n".fmt()
+      # result &= "debug(\"{order.toCpp()}\");".fmt()
     for n,next in pp.nexts:
       if n != pp.nexts.len() - 1 :
         result &= "  if(next == {n})".fmt()
@@ -157,6 +156,6 @@ proc compile*(self:seq[PietProc]) : string =
     f.write(code)
     f.close()
   # WARN: -O3
-  let (output,exitCode) = execCmdEx("gcc nimcache/piet.cpp -O2 -o nimcache/piet.out")
+  let (output,exitCode) = execCmdEx("gcc nimcache/piet.cpp -o nimcache/piet.out")
   if exitCode != 0 : return output
   return ""

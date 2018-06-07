@@ -1,8 +1,6 @@
 import common
 import pietmap, indexto, pietemu
 
-# index <-> index は分かっているので,グラフを作成する
-# [0,0,rightL] は 分かっているので,いい感じに解析できるはず
 type NotDevidedGraph = tuple[pp:PietProc,devideOrderNum:int,endCC:CC,endDP:DP]
 proc `isDevider`(self:NotDevidedGraph) :bool = self.devideOrderNum >= 0
 proc makeNotDevidedGraph(indexTo:IndexTo): seq[NotDevidedGraph] =
@@ -342,10 +340,6 @@ proc optimizeNext(self:var seq[PietProc]) =
             if next < 0 : continue
             if next == i : self[k].nexts[n] = j
 
-
-
-
-
   var updated = false
   # TODO: 実行結果が合っていればよい！
   template normalize() = updated = self.deleteNeedLessNode() or updated
@@ -372,7 +366,7 @@ proc newGraph(filename:string) : seq[PietProc] =
   result = graph.devideGraph()
   result.optimizeNext()
 
-proc makeGraph(self:seq[PietProc]) =
+proc makeGraph(self:seq[PietProc]) : string =
   var dot = """digraph pietgraph {
     graph [
       charset = "UTF-8", fontname = "Menlo", style = "filled"
@@ -383,7 +377,7 @@ proc makeGraph(self:seq[PietProc]) =
     ];
   """.replace("\n  ","\n")
   for i,pp in self:
-    const maxShow = 6
+    const maxShow = 100#6
     let order =
       if pp.orders.len() == 1: $(pp.orders[0])
       elif pp.orders.len() == 0: ""
@@ -400,12 +394,12 @@ proc makeGraph(self:seq[PietProc]) =
       let label = if n == 0 : "" else: $n
       dot &= fmt"""  a{i} -> a{next} [label = "{label}"];""" & "\n"
   dot &= "}"
-  echo dot
+  return dot
 
 if isMainModule:
   let params = commandLineParams()
   if params.len() == 0: quit("no params")
   for filename in params:
     let graph = filename.newGraph()
-    # graph.makeGraph()
+    echo graph.makeGraph()
     stdout.write graph.compile()

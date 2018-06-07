@@ -5,20 +5,18 @@ int maxsize = 10000;
 int top = -1;
 int next = 0;
 
-void outn_impl(int x) { printf("%d", x); }
 int inn_impl() {
   int tmp;
   scanf("%d", &tmp);
   return tmp;
 }
 int inc_impl() {
-  const unsigned char mask[6] = {0x7f, 0x1f, 0x0f, 0x07, 0x03, 0x01};
+  const unsigned char mask[4] = {0x7f, 0x1f, 0x0f, 0x07};
   unsigned char c = 0;
   scanf("%c", &c);
-  int type = 0;  // バイト数タイプ判定(type = byte数 - 1)
-  for (; type < 6 && c >= 0xff - mask[type]; type++) {
+  int type = 0;
+  for (; type < 4 && c >= 0xff - mask[type]; type++) {
   }
-  // utf-8での対応するマスクをかけてビットシフト
   int result = (c & mask[type]) << type * 6;
   for (int i = 1; i <= type; i++) {
     scanf("%c", &c);
@@ -26,27 +24,20 @@ int inc_impl() {
   }
   return result;
 }
+void outn_impl(int x) { printf("%d", x); }
 void outc_impl(int x) {
-#define MY_DECODE_UTF8(n) \
+#define MY_DECODE_UTF8(n, mask1, mask2)      \
+  str[0] = mask1 | ((x >> (6 * n)) & mask2); \
   for (int i = 1; i <= n; i++) str[i] = 0x80 | ((x >> 6 * (n - i)) & 0x3f);
   unsigned char str[6] = {};
   if (x < 0x80) {
     str[0] = x;
   } else if (x < 0x800) {
-    str[0] = 0xd0 | ((x >> 6) & 0x1f);
-    MY_DECODE_UTF8(1);
+    MY_DECODE_UTF8(1, 0xd0, 0x1f);
   } else if (x < 0x10000) {
-    str[0] = 0xe0 | ((x >> 12) & 0x0f);
-    MY_DECODE_UTF8(2);
-  } else if (x < 0x200000) {
-    str[0] = 0xf0 | ((x >> 18) & 0x07);
-    MY_DECODE_UTF8(3);
-  } else if (x < 0x4000000) {
-    str[0] = 0xfb | ((x >> 24) & 0x03);
-    MY_DECODE_UTF8(4);
+    MY_DECODE_UTF8(2, 0xe0, 0x0f);
   } else {
-    str[0] = 0xfd | ((x >> 30) & 0x01);
-    MY_DECODE_UTF8(5);
+    MY_DECODE_UTF8(3, 0xfd, 0x01);
   }
   printf("%s", str);
 #undef MY_DECODE_UTF8
@@ -130,16 +121,19 @@ void roll() {
   top -= 1;
   const int b = top < stack[top] ? top : stack[top];
   top -= 1;
-  int *roll_stack = (int *)malloc(sizeof(int) * b);
-  for (int i = 0; i < b; i++) {
-    roll_stack[i] = stack[top - i];
-  }
-  for (int i = 0; i < b; i++) {
-    stack[top - b + i] = roll_stack[(i - a + b) % b];
-  }
-  free(roll_stack);
+  int *roller = (int *)malloc(sizeof(int) * b);
+  for (int i = 0; i < b; i++) roller[i] = stack[top - i];
+  for (int i = 1; i <= b; i++) stack[top - b + i] = roller[(b - i + a) % b];
+  free(roller);
 }
-
+void print_stack() {
+  for (int i = 0; i <= top; i++) printf("%d ", stack[i]);
+}
+#define debug(str) \
+  printf(str);     \
+  printf("\n");    \
+  print_stack();   \
+  printf("\n");
 inline void start() { stack = (int *)malloc(sizeof(int) * maxsize); }
 int terminate() {
   printf("\n");
