@@ -1,6 +1,6 @@
 import common
 import nre
-
+import pietbase
 type VPietOrder = enum
   Push,Pop,Add,Sub,Mul,Div,Mod,
   Not,Greater,Dup,Roll,OutN,OutC,InN,InC,
@@ -69,9 +69,47 @@ proc `$` (self:seq[LabeledOrders]):string =
     for order in orders.orders:
       result &= $order & "\n"
 
+proc toPiet(self:seq[LabeledOrders]) =
+  var strmap = ""
+  for orders in self:
+    strmap &= orders.name & ":"
+    var nowColor = 0.PietColor
+    for order in orders.orders:
+      if order.order == Terminate:
+        strmap &= "#"
+        continue
+      if order.order == Goto:
+        strmap &= " -> " & order.args[0]
+        continue
+      if order.order == GoIf:
+        strmap &= " -> {order.args[0]},{order.args[1]}".fmt
+        continue
+      let pietOrder = case order.order :
+        of Push:Order.Push
+        of Pop:Order.Pop
+        of Add:Order.Add
+        of Sub:Order.Sub
+        of Mul:Order.Mul
+        of Div:Order.Div
+        of Mod:Order.Mod
+        of Not:Order.Not
+        of Greater:Order.Greater
+        of Dup:Order.Dup
+        of Roll:Order.Roll
+        of OutN:Order.OutN
+        of OutC:Order.OutC
+        of InN:Order.InN
+        of InC:Order.InC
+        else:Order.ErrorOrder
+      strmap &= (nowColor + 'a'.ord).chr
+      nowColor = nowColor.decideNext(pietOrder)
+    strmap &= & "\n"
+  echo strmap
+
 
 if isMainModule:
   let params = commandLineParams()
   if params.len() == 0: quit("no params")
   for filename in params:
-    echo labeling(filename)
+    let labeled = labeling(filename)
+    labeled.toPiet()

@@ -8,14 +8,24 @@ type
   # 200 220 020 022 002 202 => 6 ...... 11
   # 100 110 010 011 001 101 => 12 ..... 17
 
+const WhiteNumber* = 18
+const BlackNumber* = 19
 proc `hue` *(c:PietColor) : range[0..6] =
   assert c < 18 and c >= 0,fmt"{c}"
   return c mod 6 # 0(red) ... 5(purple)
 proc `light` *(c:PietColor) : range[0..3] =
   assert c < 18 and c >= 0,fmt"{c}"
   c div 6 # 0(light) 1(normal) 2(dark)
-const WhiteNumber* = 18
-const BlackNumber* = 19
+proc `hue=`*(c:var PietColor,val:range[0..6]) =
+  c = ((val + 6) mod 6).PietColor + (c div 6) * 6
+proc `light=`*(c:var PietColor,val:range[0..3]) =
+  c = ((val + 6) mod 6).PietColor * 6.PietColor + (c mod 6)
+proc `nwb=`*(c:var PietColor,val:NWB) =
+  c = case val:
+    of White: WhiteNumber
+    of Black: BlackNumber
+    of None: c mod 18
+
 proc `nwb` *(c:PietColor) : NWB =
   return case c:
     of WhiteNumber: White
@@ -42,20 +52,12 @@ proc toRGB*(c:PietColor):tuple[r,g,b:uint8] =
 
 
 #[
-  proc `hue=`*(c:var PietColor,val:range[0..6]) = c = val + (c div 6) * 6
-  proc `light=`*(c:var PietColor,val:range[0..3]) = c = val * 6.PietColor + (c mod 6)
-  proc `nwb=`*(c:var PietColor,val:NWB) =
-    c = case val:
-      of White: WhiteNumber
-      of Black: BlackNumber
-      of None: c mod 18
   proc `$`*(self:PietColor): string =
     return case self.nwb:
       of None: "{self.hue}{('A'.int + self.light).char}".fmt
       of White: ".."
       of Black: "  "
 ]#
-
 # Pietの命令について
 type
   Order* = enum
@@ -66,6 +68,14 @@ type
     Dup,Roll,InN,
     InC,OutN,OutC,
     Wall,Nop,Terminate
+const orderBlock = [
+  [ErrorOrder,Push,Pop],
+  [Add,Sub,Mul],
+  [Div,Mod,Not],
+  [Greater,Pointer,Switch],
+  [Dup,Roll,InN],
+  [InC,OutN,OutC],
+]
 
 proc toChar*(order:Order):char =
   return case order:
@@ -121,14 +131,48 @@ proc decideOrder*(now,next:PietColor): Order =
   if next.nwb == White or now.nwb == White: return Nop
   let hueDiff = (6 + (next.hue - now.hue) mod 6) mod 6
   let lightDiff = (3 + (next.light - now.light) mod 3) mod 3
-  return [
-    [ErrorOrder,Push,Pop],
-    [Add,Sub,Mul],
-    [Div,Mod,Not],
-    [Greater,Pointer,Switch],
-    [Dup,Roll,InN],
-    [InC,OutN,OutC],
-  ][hueDiff][lightDiff]
+  return orderBlock[hueDiff][lightDiff]
+
+proc decideNext*(now:PietColor,order:Order): PietColor =
+  assert(not (order in [ErrorOrder,Terminate]))
+  if order == Nop:
+    result.nwb = White
+    return
+  result.nwb = None
+  for h,byHue in orderblock:
+    for l,o in byHue:
+      if o != order: continue
+      result.hue = now.hue + h
+      result.light = now.light + l
+      return
+
+#[const orderBlock = [
+  [ErrorOrder,Push,Pop],
+  [Add,Sub,Mul],
+  [Div,Mod,Not],
+  [Greater,Pointer,Switch],
+  [Dup,Roll,InN],
+  [InC,OutN,OutC],
+]]#
+  # *,Push,Pop,
+  # Add,Sub,Mul,
+  # Div,Mod,Not,
+  # Greater,Pointer,Switch,
+  # Dup,Roll,InN,
+  # InC,OutN,OutC,
+  # if next.nwb == Black or now.nwb == Black: return Wall # 解析のためには黒のこともある
+  # if next.nwb == White or now.nwb == White: return Nop
+  # let hueDiff = (6 + (next.hue - now.hue) mod 6) mod 6
+  # let lightDiff = (3 + (next.light - now.light) mod 3) mod 3
+  # return [
+  #   [ErrorOrder,Push,Pop],
+  #   [Add,Sub,Mul],
+  #   [Div,Mod,Not],
+  #   [Greater,Pointer,Switch],
+  #   [Dup,Roll,InN],
+  #   [InC,OutN,OutC],
+  # ][hueDiff][lightDiff]
+
 
 
 # Piet幾何計算用
