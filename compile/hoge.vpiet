@@ -1,0 +1,31 @@
+main:
+  go adder
+ender:
+  outn
+  terminate
+
+adder:
+  push 1
+  push 1
+  add
+  dup
+  outn
+  go suber muler
+suber: # sub
+  push 1
+  push 1
+  sub
+  outn
+  go diver
+muler:
+  push 1
+  push 1
+  mul
+  outn
+  go main
+diver:
+  push 1
+  push 1
+  div
+  outn
+  go ender
