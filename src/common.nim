@@ -53,7 +53,9 @@ proc newMatrix*[T](width,height:int):Matrix[T] =
   result.height = height
 proc `[]=`*[T](self:var Matrix[T],x,y:Natural,value:T) =
   self.data[x + self.width * y] = value
-proc `[]`*[T](self:var Matrix[T],x,y:Natural): var T =
+proc `[]`*[T](self: Matrix[T],x,y:Natural): T =
+  return self.data[x + self.width * y]
+proc `[]`*[T](self: var Matrix[T],x,y:Natural): var T =
   return self.data[x + self.width * y]
 proc `$`*[T](self:var Matrix[T]) :string=
   result = ""

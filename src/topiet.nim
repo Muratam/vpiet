@@ -2,6 +2,7 @@ import common
 import nre
 import pietbase
 import tables
+import nimPNG
 type VPietOrder = enum
   Push,Pop,Add,Sub,Mul,Div,Mod,
   Not,Greater,Dup,Roll,OutN,OutC,InN,InC,
@@ -101,9 +102,9 @@ proc `$` (self:seq[seq[OrderAndArgs]]):string =
     for order in orders:
       result &= $order & "\n"
 
-proc toPiet(self:seq[seq[OrderAndArgs]]) =
+proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
-  let width = maxFunLen + 8 + self.len() * 2
+  let width = maxFunLen + 5 + self.len() * 2
   let height = self.len() * 4 + 1
   var pietMap = newMatrix[PietColor](width,height)
   proc setMap(x,y:int,color:PietColor) =
@@ -169,13 +170,10 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) =
         if jumpArgs[0] > jumpArgs[1]:
           pietMap[width - 2,4 + y * 4] = nowColor.decideNext(Order.Not)
       else: discard
-
-
   # 左端上
   pietMap[0,0] = 0.PietColor
   pietMap[0,1] = 0.PietColor
   pietMap[0,2] = 0.PietColor
-
 
   # write orders
   for y,orders in self:
@@ -186,7 +184,10 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) =
       let pietOrder = order.order.toPietOrder()
       nowColor = nowColor.decideNext(pietOrder)
       setMap(x+1,y,nowColor)
-  # print test
+  return pietMap
+
+proc `$`(pietMap:Matrix[PietColor]): string =
+  result = ""
   for y in 0..<pietMap.height:
     for x in 0..<pietMap.width:
       let color = pietMap[x,y]
@@ -194,8 +195,18 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) =
         if color == WhiteNumber : '.'
         elif color == BlackNumber : '#'
         else: (color + 'a'.ord).chr
-      stdout.write c
-    stdout.write "\n"
+      result &= c
+    result &= "\n"
+
+proc save(self:Matrix[PietColor],filename:string) =
+  var pixels = newString(3 * self.width * self.height)
+  for x in 0..<self.width:
+    for y in 0..<self.height:
+      let (r,g,b)= self[x,y].toRGB()
+      pixels[3 * (x + y * self.width) + 0] = cast[char](r)
+      pixels[3 * (x + y * self.width) + 1] = cast[char](g)
+      pixels[3 * (x + y * self.width) + 2] = cast[char](b)
+  discard savePNG24(filename,pixels,self.width,self.height)
 
 
 if isMainModule:
@@ -203,4 +214,5 @@ if isMainModule:
   if params.len() == 0: quit("no params")
   for filename in params:
     let labeled = labeling(filename)
-    labeled.toPiet()
+    let pietMap = labeled.toPiet()
+    pietMap.save("nimcache/piet.png")

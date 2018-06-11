@@ -402,4 +402,4 @@ if isMainModule:
   for filename in params:
     let graph = filename.newGraph()
     echo graph.makeGraph()
-    stdout.write graph.compile()
+    # stdout.write graph.compile()
