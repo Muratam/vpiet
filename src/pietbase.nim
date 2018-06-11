@@ -17,9 +17,9 @@ proc `light` *(c:PietColor) : range[0..3] =
   assert c < 18 and c >= 0,fmt"{c}"
   c div 6 # 0(light) 1(normal) 2(dark)
 proc `hue=`*(c:var PietColor,val:range[0..6]) =
-  c = ((val + 6) mod 6).PietColor + (c div 6) * 6
+  c = (((val + 6) mod 6).PietColor + (c div 6) * 6) mod 18
 proc `light=`*(c:var PietColor,val:range[0..3]) =
-  c = ((val + 6) mod 6).PietColor * 6.PietColor + (c mod 6)
+  c = (((val + 6) mod 6).PietColor * 6.PietColor + (c mod 6)) mod 18
 proc `nwb=`*(c:var PietColor,val:NWB) =
   c = case val:
     of White: WhiteNumber
@@ -146,32 +146,6 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
       result.light = now.light + l
       return
 
-#[const orderBlock = [
-  [ErrorOrder,Push,Pop],
-  [Add,Sub,Mul],
-  [Div,Mod,Not],
-  [Greater,Pointer,Switch],
-  [Dup,Roll,InN],
-  [InC,OutN,OutC],
-]]#
-  # *,Push,Pop,
-  # Add,Sub,Mul,
-  # Div,Mod,Not,
-  # Greater,Pointer,Switch,
-  # Dup,Roll,InN,
-  # InC,OutN,OutC,
-  # if next.nwb == Black or now.nwb == Black: return Wall # 解析のためには黒のこともある
-  # if next.nwb == White or now.nwb == White: return Nop
-  # let hueDiff = (6 + (next.hue - now.hue) mod 6) mod 6
-  # let lightDiff = (3 + (next.light - now.light) mod 3) mod 3
-  # return [
-  #   [ErrorOrder,Push,Pop],
-  #   [Add,Sub,Mul],
-  #   [Div,Mod,Not],
-  #   [Greater,Pointer,Switch],
-  #   [Dup,Roll,InN],
-  #   [InC,OutN,OutC],
-  # ][hueDiff][lightDiff]
 
 
 
