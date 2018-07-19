@@ -104,7 +104,7 @@ proc `$` (self:seq[seq[OrderAndArgs]]):string =
 
 proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
-  let width = maxFunLen + 5 + self.len() * 2
+  let width = maxFunLen + 6 + self.len() * 2
   let height = self.len() * 4 + 1
   var pietMap = newMatrix[PietColor](width,height)
   proc setMap(x,y:int,color:PietColor) =
@@ -129,6 +129,10 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
       pietMap[2*y+2,1+4*y] = BlackNumber
       pietMap[2*y+0,3+4*y] = BlackNumber
       pietMap[2*y+2,3+4*y] = BlackNumber
+      pietMap[0,1+4*y] = BlackNumber
+      pietMap[0,2+4*y] = 0.PietColor
+      pietMap[0,3+4*y] = BlackNumber
+
     # 分岐
     var jumpOrder = ErrorOrder
     var jumpArgs = newSeq[int]()
@@ -163,6 +167,10 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
         let y2 = 4 + 4 * y
         let minArg = min(jumpArgs[0],jumpArgs[1])
         let maxArg = max(jumpArgs[0],jumpArgs[1])
+        nowColor = nowColor.decideNext(Order.Not)
+        pietMap[width - 2,4 + y * 4] = nowColor
+        nowColor = nowColor.decideNext(Order.Not)
+        pietMap[width - 3,4 + y * 4] = nowColor
         pietMap[0+2*minArg,y2] = BlackNumber
         pietMap[1+2*minArg,y2] = 0.PietColor
         pietMap[2+2*maxArg,y2] = 0.PietColor

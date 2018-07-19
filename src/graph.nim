@@ -377,7 +377,7 @@ proc makeGraph(self:seq[PietProc]) : string =
     ];
   """.replace("\n  ","\n")
   for i,pp in self:
-    const maxShow = 100#6
+    const maxShow = 6 # 100
     let order =
       if pp.orders.len() == 1: $(pp.orders[0])
       elif pp.orders.len() == 0: ""
@@ -401,5 +401,5 @@ if isMainModule:
   if params.len() == 0: quit("no params")
   for filename in params:
     let graph = filename.newGraph()
-    echo graph.makeGraph()
-    # stdout.write graph.compile()
+    # echo graph.makeGraph()
+    stdout.write graph.compile()

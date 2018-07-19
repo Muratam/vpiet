@@ -114,6 +114,7 @@ proc nextStep(self:var PietCore): bool =
     let (index,order) = nextEdge[self.cc,self.dp]
     if order == Terminate: return false
     if order != Wall:
+      # echo order,self.stack
       self.doOrder(order,self.indexTo.blockSize[self.index])
       self.index = index
       return true
