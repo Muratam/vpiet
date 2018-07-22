@@ -1,7 +1,7 @@
 import order
-type PietOrderType = enum
+type PietOrderType* = enum
   NormalOrder,TerminateAtGreater # 命令列の変換は自由
-const pietOrderType = NormalOrder
+const pietOrderType* = NormalOrder
 
 when pietOrderType == NormalOrder:
   const orderBlock* = [

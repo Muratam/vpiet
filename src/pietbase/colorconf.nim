@@ -1,9 +1,9 @@
 import color
 
-type PietColorType = enum
+type PietColorType* = enum
   NormalColor # RGB<->PietColorの変換方式は自由
 
-const pietColorType = NormalColor
+const pietColorType* = NormalColor
 
 when pietColorType == NormalColor:
   proc toRGB*(c:PietColor):tuple[r,g,b:uint8] =

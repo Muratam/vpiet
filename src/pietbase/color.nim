@@ -60,3 +60,15 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
       result.hue = now.hue + h
       result.light = now.light + l
       return
+
+proc `$`*(pietMap:Matrix[PietColor]): string =
+  result = ""
+  for y in 0..<pietMap.height:
+    for x in 0..<pietMap.width:
+      let color = pietMap[x,y]
+      let c =
+        if color == WhiteNumber : '.'
+        elif color == BlackNumber : '#'
+        else: (color + 'a'.ord).chr
+      result &= c
+    result &= "\n"
