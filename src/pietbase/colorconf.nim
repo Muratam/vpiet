@@ -1,7 +1,6 @@
-import nimPNG
 import color
 
-type PietColorType* = enum
+type PietColorType = enum
   NormalColor # RGB<->PietColorの変換方式は自由
 
 const pietColorType = NormalColor
@@ -42,11 +41,3 @@ when pietColorType == NormalColor:
     if r >= 192u8 and g >= 192u8 and b >= 192u8: return hue
     # normal
     return 6 + hue
-
-
-proc getPietColor*(img:PNGResult,start:int): PietColor =
-  let
-    r = cast[uint8](img.data[start])
-    g = cast[uint8](img.data[start+1])
-    b = cast[uint8](img.data[start+2])
-  return toPietColor(r,g,b)
