@@ -1,3 +1,23 @@
+# 機能
+命令パターンを変えたり白の扱いを変えたりする可能性がある.
+それに対して手軽に変更できるようにしておきたい.
+
+- pietbase : dpcc + order + 色空間
+  - (白黒はそのままでよい)
+  - 3x6 であることや, その対応命令は容易に変更しうる
+  - (Orderとの一対一対応をする必要はないので,Orderはゆるくて良い)
+  - img.getPietColor() を変更すればよいだけだが…?
+- topiet : vpiet形式からPiet画像を生成.
+  - PietColorとか結構依存している
+- steganopiet : ステガノっぽいPiet
+
+- (pietmap : 画像 → PietColor化+グループ化+index付)
+- (indexto : [index->[index,order]] に変換)
+  - (White を Piet08 はここで別にやる感じ)
+  - (pietbase.decideOrder で命令を決定している)
+- (pietcore : 順に実行(抽象化されている(by pietbase.Order)))
+
+
 # vpiet
 1. can execute Piet on CUI ! (high speed !! big png file supported !!)
 2. can edit Piet on CUI ! (Cool!!)

@@ -41,27 +41,6 @@ proc getRGBAMatrix*(img:PNGResult):Matrix[RGBA] =
     for x in 0..<img.width:
       result[x,y].a = img.data[n * (x + y * img.width) + 3].uint8
 
-proc getPietColor(img:PNGResult,start:int): PietColor =
-  let
-    r = img.data[start]
-    g = img.data[start+1]
-    b = img.data[start+2]
-  if r == g and g == b :
-    if r == '\xff': return WhiteNumber
-    return BlackNumber
-  let hue :PietColor =
-    if r > g and g == b : 0
-    elif r == g and g > b : 1
-    elif r < g and g > b : 2
-    elif r < g and g == b : 3
-    elif r == g and g < b : 4
-    else : 5
-  # isDark
-  if r <= '\xc0' and g <= '\xc0' and b <= '\xc0': return hue + 12
-  # isLight
-  if r >= '\xc0' and g >= '\xc0' and b >= '\xc0': return hue
-  # normal
-  return 6 + hue
 
 
 # imgをPietで扱いやすいように直接離散化
