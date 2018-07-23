@@ -50,17 +50,21 @@ proc `$`*(self:seq[PietProc]):string =
     results &= self[i].toStr(i)
   return results.join("\n")
 
+proc compileToVPietCode(self:seq[PietProc]):string =
+  discard
 
 
-proc compileToCppCode(self:seq[PietProc]) : string =
+proc compileToCppCode(self:seq[PietProc],debug:bool=false) : string =
   const optimizedHeader =  staticRead("compile/optimized.cpp")
   result = optimizedHeader
   result &= "int main(){\n  start();\n"
   for i,pp in self:
     result &= "a{i}:\n".fmt()
     for order in pp.orders:
-      result &= "  {order.toCpp()}\n".fmt()
-      # result &= "debug(\"{order.toCpp()}\");".fmt()
+      if debug:
+        result &= "  {order.toCpp()} debug(\"{order.toCpp()}\");\n".fmt()
+      else:
+        result &= "  {order.toCpp()}\n".fmt()
     for n,next in pp.nexts:
       if n != pp.nexts.len() - 1 :
         result &= "  if(next == {n})".fmt()
@@ -100,7 +104,7 @@ proc drawGraph(self:seq[PietProc],showAll:bool) : string =
 proc executeAsCpp*(self:seq[PietProc],
               cppFileName:string="/tmp/piet.cpp",
               binFileName:string="/tmp/piet.out") =
-  let code = self.compileToCppCode()
+  let code = self.compileToCppCode(true)
   let f = open(cppFileName,fmWrite)
   f.write(code)
   f.close()
@@ -110,9 +114,11 @@ proc executeAsCpp*(self:seq[PietProc],
     echo output
     return
   discard startProcess(binFileName,options={poParentStreams}).waitForExit()
+  discard startProcess("/usr/local/bin/code",args=[cppFileName],options={})
+
 
 proc showGraph*(self:seq[PietProc],
-                showAll:bool=true,
+                showAll:bool=false,
                 dotFileName:string="/tmp/piet.dot",
                 pngFileName:string="/tmp/piet.png") =
   let dot = self.drawGraph(showAll)
@@ -138,6 +144,6 @@ if isMainModule:
     if "-d" in param : draw = true
   for filename in params:
     if filename.startsWith("-") : continue
-    let graph = filename.newGraph(optimize=true)
-    if draw: graph.showGraph()
+    let graph = filename.newGraph(optimize=false)
+    if draw: graph.showGraph(showAll=true)
     if execute : graph.executeAsCpp()

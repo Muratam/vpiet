@@ -14,83 +14,70 @@ import nimPNG
   go <label> <label> 条件に応じてジャンプ(jne / not not するのでトップは消える)
 応用命令:
 コメント: #
-
-
 ]#
 
-type VPietOrder* = enum
-  Push,Pop,Add,Sub,Mul,Div,Mod,
-  Not,Greater,Dup,Roll,OutN,OutC,InN,InC,
-  Terminate,Label,GoIf,Goto,ErrorOrder
-type OrderAndArgs* = tuple[order:VPietOrder,args:seq[string]]
-
-proc toPietOrder*(order:VPietOrder):Order =
-  return case order :
-    of Push:Order.Push
-    of Pop:Order.Pop
-    of Add:Order.Add
-    of Sub:Order.Sub
-    of Mul:Order.Mul
-    of Div:Order.Div
-    of Mod:Order.Mod
-    of Not:Order.Not
-    of Greater:Order.Greater
-    of Dup:Order.Dup
-    of Roll:Order.Roll
-    of OutN:Order.OutN
-    of OutC:Order.OutC
-    of InN:Order.InN
-    of InC:Order.InC
-    of Terminate:Order.Terminate
-    else:Order.ErrorOrder
+type EMoveType* = enum
+  Operation,MoveTerminate,Label,GoIf,Goto,ErrorVPietType
+type OrderAndArgs* = tuple[order:EMoveType,operation:Order,args:seq[string]]
 
 proc `$`* (self:seq[seq[OrderAndArgs]]):string =
   result = ""
   for i,orders in self:
     result &= $i & "\n"
     for order in orders:
-      result &= $order & "\n"
+      if order.order == Operation:
+        result &= $order.operation
+      else:
+        result &= $order.order
+      result &= " " & ($order.args) & "\n"
 
+proc interpretVPietOrder*(orderName:string):Order =
+  return case orderName.toLowerAscii():
+    of "push": Push
+    of "pop": Pop
+    of "add": Add
+    of "sub": Sub
+    of "mul": Mul
+    of "div": Div
+    of "mod": Mod
+    of "not": Not
+    of "greater": Greater
+    of "dup": Dup
+    of "roll": Roll
+    of "outn": OutN
+    of "outc": OutC
+    of "inn": InN
+    of "inc": InC
+    of "terminate": Terminate
+    of "end": Terminate
+    else: ErrorOrder
 
 proc toOrder*(order:seq[string]): OrderAndArgs=
-  if order.len == 0 : return (ErrorOrder,@[])
-  result.args = if order.len > 1: order[1..^1] else : @[]
-  let orderName = order[0].toLowerAscii()
-  result.order = case orderName:
-  of "push": Push
-  of "pop": Pop
-  of "add": Add
-  of "sub": Sub
-  of "mul": Mul
-  of "div": Div
-  of "mod": Mod
-  of "not": Not
-  of "greater": Greater
-  of "dup": Dup
-  of "roll": Roll
-  of "outn": OutN
-  of "outc": OutC
-  of "inn": InN
-  of "inc": InC
-  of "terminate": Terminate
-  of "end": Terminate
-  else: ErrorOrder
-  if result.order == Push :
-    if result.args.len != 1: result.order = ErrorOrder
-    if result.args[0] != "1" : result.order = ErrorOrder
-    return
-  if result.order != ErrorOrder: return
+  let errorResult :OrderAndArgs = (ErrorVPietType,ErrorOrder,@[])
+  if order.len == 0 : return errorResult
+  let args = if order.len > 1: order[1..^1] else : @[]
+  let orderName = order[0]
+  let operation = orderName.interpretVPietOrder()
+  # Operation
+  if operation != ErrorOrder :
+    if operation == Push :
+      if args.len != 1 or args[0] != "1" :
+        return errorResult
+    if operation == Terminate:
+      return (MoveTerminate,Terminate,args)
+    return (Operation,operation,args)
+  # Label
   if orderName.endsWith(":"):
-    result.order = Label
-    result.args = @[orderName.replace(":","")]
-    return
-  if orderName != "go": return
-  if result.args.len == 1 :
-    result.order = Goto
-    return
-  if result.args.len == 2:
-    result.order = GoIf
-    return
+    let args = @[orderName.replace(":","")]
+    return (Label,ErrorOrder,args)
+  # Go
+  if orderName == "go":
+    case args.len :
+    of 1: return (Goto,ErrorOrder,args)
+    of 2: return (GoIf,ErrorOrder,args)
+    else: discard
+  # Error
+  return errorResult
 
 proc labeling*(filename:string): seq[seq[OrderAndArgs]] =
   let f = open(filename,fmRead)

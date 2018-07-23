@@ -137,7 +137,7 @@ proc makeGraph(indexTo:IndexTo) :seq[PietProc]=
             self[current].pp.nexts &= self.search(cc,dp,next.index)
             cc.toggle()
           return
-        of Pointer: # 4方向の可能性に分岐
+        of Pointer: # 4方向の可能性に分岐w
           pushOrder()
           terminate()
           let current = self.len() - 1

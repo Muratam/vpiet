@@ -1,1 +1,0 @@
-nimr src/makegraph.nim $1 > /tmp/hoge.dot && dot -Tpng /tmp/hoge.dot -o /tmp/hoge.png && open /tmp/hoge.png

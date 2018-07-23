@@ -34,14 +34,14 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
       pietMap[0,3+4*y] = BlackNumber
 
     # 分岐
-    var jumpOrder = VPietOrder.ErrorOrder
+    var jumpOrder = ErrorVPietType
     var jumpArgs = newSeq[int]()
     for x,order in orders:
-      if order.order in [VPietOrder.Terminate,Goto,GoIf]:
+      if order.order in [MoveTerminate,Goto,GoIf]:
         jumpOrder = order.order
         jumpArgs = order.args.mapIt(it.parseInt())
         break
-    if jumpOrder == VPietOrder.Terminate:
+    if jumpOrder == MoveTerminate:
       pietMap[width - 1,1 + y * 4] = BlackNumber
       pietMap[width - 1,2 + y * 4] = 0.PietColor
       pietMap[width - 1,3 + y * 4] = 0.PietColor
@@ -82,14 +82,13 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   pietMap[0,0] = 0.PietColor
   pietMap[0,1] = 0.PietColor
   pietMap[0,2] = 0.PietColor
-
   # write orders
   for y,orders in self:
     var nowColor = 0.PietColor
     setMap(0,y,nowColor)
     for x,order in orders:
-      if order.order in [VPietOrder.Terminate,Goto,GoIf]: continue
-      let pietOrder = order.order.toPietOrder()
+      if order.order in [MoveTerminate,Goto,GoIf]: continue
+      let pietOrder = order.operation
       nowColor = nowColor.decideNext(pietOrder)
       setMap(x+1,y,nowColor)
   return pietMap
