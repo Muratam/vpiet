@@ -4,6 +4,20 @@ import pietbase
 import tables
 import nimPNG
 
+#[
+文法:
+基本命令:
+  push n
+  pop add sub mul div mod not greater dup roll outn outc inn inc terminate
+  <label>:
+  go <label>
+  go <label> <label> 条件に応じてジャンプ(jne / not not するのでトップは消える)
+応用命令:
+コメント: #
+
+
+]#
+
 type VPietOrder* = enum
   Push,Pop,Add,Sub,Mul,Div,Mod,
   Not,Greater,Dup,Roll,OutN,OutC,InN,InC,

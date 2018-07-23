@@ -1,5 +1,6 @@
 import common
 import pietmap, indexto, pietemu
+import pietproc
 
 type NotDevidedGraph = tuple[pp:PietProc,devideOrderNum:int,endCC:CC,endDP:DP]
 proc `isDevider`(self:NotDevidedGraph) :bool = self.devideOrderNum >= 0
@@ -395,6 +396,8 @@ proc makeGraph(self:seq[PietProc]) : string =
       dot &= fmt"""  a{i} -> a{next} [label = "{label}"];""" & "\n"
   dot &= "}"
   return dot
+
+
 
 if isMainModule:
   let params = commandLineParams()
