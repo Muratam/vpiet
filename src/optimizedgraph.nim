@@ -2,30 +2,24 @@ import common
 import pietmap, indexto
 import osproc
 
-type UnionFindTree[T] = ref object
-  data: seq[T]
-  parent: seq[int]
-proc newUnionFindTree(n:int) : UnionFindTree =
-  new(result)
-  result.parent = newSeqWith(n,-1)
-proc root(self:var UnionFindTree,x:int):int =
-  if self.parent[x] < 0 : return x
-  else:
-    self.parent[x] = self.root(self.parent[x])
-    return self.parent[x]
-proc merge(self:var UnionFindTree,x,y:int):bool=
-  var x = self.root(x)
-  var y = self.root(y)
-  if x == y : return false
-  if self.parent[y] < self.parent[x] : (x,y) = (y,x)
-  if self.parent[y] == self.parent[x] : self.parent[x] -= 1
-  self.parent[y] = x
-  return true
-
-
-
 type ShortEdge = tuple[src,dst:int,order:Order,branch:int,size:int]
 type Edge = tuple[src,dst:int,orderAndSizes:seq[tuple[order:Order,size:int]],branch:int]
+
+proc `$`(self:Edge):string =
+  "[{self.src}->{self.dst}:br={self.branch}:or={self.orderAndSizes.len()}]".fmt()
+
+
+proc isSame(x,y:Edge,checkBranch:bool=true):bool =
+  if x.orderAndSizes.len() != y.orderAndSizes.len(): return false
+  if checkBranch and x.branch != y.branch : return false
+  for i in 0..<x.orderAndSizes.len():
+    let xs = x.orderAndSizes[i]
+    let ys = x.orderAndSizes[i]
+    if xs.order != ys.order : return false
+    if xs.order == Push :
+      if xs.size != ys.size : return false
+  return true
+
 # branch :: dp cc で変更時(realNextとかMerge/DevideNopバグがない)
 proc makeShortEdges(indexTo:IndexTo) : seq[ShortEdge] =
   # block数 x 8 あるのをまず削減
@@ -69,7 +63,8 @@ proc makeShortEdges(indexTo:IndexTo) : seq[ShortEdge] =
         dp.toggle(1)
     of Wall: assert false
     of Terminate:
-      return currentNodeIndex
+      maxNodeIndex += 1
+      to &= (currentNodeIndex,maxNodeIndex,order,-1,indexTo.blockSize[index])
     else:
       let nextNodeIndex = search(nextIndex,dp,cc)
       to &= (currentNodeIndex,nextNodeIndex,order,-1,indexTo.blockSize[index])
@@ -99,20 +94,43 @@ proc getOutEdgesIndexs(self:seq[Edge]) : seq[seq[int]] =
   for i,edge in self: result[edge.src] &= i
 
 proc deleteNeedlessEdges(self:var seq[Edge]) =
-  while true:
+  proc clean(self:var seq[Edge]) : bool =
     var newGraph = newSeq[Edge]()
     for edge in self:
       if edge.src >= 0: newGraph &= edge
-    if newGraph.len() == self.len(): return
+    if self.len() == newGraph.len() : return false
     self = newGraph
-    let inEdgesIndexs = self.getInEdgesIndexs()
-    let outEdgesIndexs = self.getOutEdgesIndexs()
-    for i in 0..<self.getMaxNodeIndex():
-      if inEdgesIndexs[i].len() != 0 : continue
-      if outEdgesIndexs[i].len() == 0 : continue
-      if self[outEdgesIndexs[i][0]].src == 0 : continue
-      for oe in outEdgesIndexs[i]:
-        self[oe].src = -1
+    return true
+  while true:
+    discard self.clean()
+    # START 以外の入力のないものの削除
+    block:
+      let inEdgesIndexs = self.getInEdgesIndexs()
+      let outEdgesIndexs = self.getOutEdgesIndexs()
+      for i in 0..<self.getMaxNodeIndex():
+        if inEdgesIndexs[i].len() != 0 : continue
+        if outEdgesIndexs[i].len() == 0 : continue
+        if self[outEdgesIndexs[i][0]].src == 0 : continue
+        for oe in outEdgesIndexs[i]: self[oe].src = -1
+    discard self.clean()
+    # branchだけが異なるエッジの削除
+    block:
+      let outEdgesIndexs = self.getOutEdgesIndexs()
+      for i in 0..<self.getMaxNodeIndex():
+        if outEdgesIndexs[i].len() <= 1 : continue
+        let dsts = outEdgesIndexs[i].mapIt(self[it].dst)
+        if dsts.min() != dsts.max(): continue
+        var ok = true
+        for a in 0..<outEdgesIndexs[i].len():
+          for b in (a+1)..<outEdgesIndexs[i].len():
+            if not isSame(self[outEdgesIndexs[i][a]],self[outEdgesIndexs[i][b]],false):
+              ok = false
+        if not ok : continue
+        self[outEdgesIndexs[i][0]].branch = -1
+        for a in 1..<outEdgesIndexs[i].len():
+          self[outEdgesIndexs[i][a]].src = -1
+    if not self.clean() : return
+
 
 proc mergeBridge(self:var seq[Edge]) :bool=
   result = false
@@ -123,8 +141,10 @@ proc mergeBridge(self:var seq[Edge]) :bool=
     if outEdgesIndexs[i].len() != 1 : continue
     let ie = inEdgesIndexs[i][0]
     let oe = outEdgesIndexs[i][0]
+    if  self[oe].src == 0 : continue
     self[oe].src = self[ie].src
     self[oe].orderAndSizes = self[ie].orderAndSizes & self[oe].orderAndSizes
+    self[oe].branch = self[ie].branch
     self[ie].src = -1
     result = true
   self.deleteNeedlessEdges()
@@ -137,7 +157,7 @@ proc filterExitBranch(self:var seq[Edge]) :bool=
     if inEdgesIndexs[i].len() != 1 : continue
     if outEdgesIndexs[i].len() < 1 : continue
     let ie = inEdgesIndexs[i][0]
-    let orders = outEdgesIndexs[i].mapIt(self[it].orderAndSizes[^1].order)
+    let orders = outEdgesIndexs[i].mapIt(self[it].orderAndSizes[0].order)
     let last = self[ie].orderAndSizes[^1]
     if orders.allIt(it == Pointer):
       if last.order == Not:
@@ -159,6 +179,61 @@ proc filterExitBranch(self:var seq[Edge]) :bool=
   self.deleteNeedlessEdges()
 
 
+#[
+proc deleteSameNode(self:var seq[Edge]):bool =
+  result = false
+  let inEdgesIndexs = self.getinEdgesIndexs()
+  let outEdgesIndexs = self.getOutEdgesIndexs()
+  let maxNodeIndex = self.getMaxNodeIndex()
+
+  for i in 0..<maxNodeIndex:
+    if inEdgesIndexs[i].len() < 1 : continue
+    if outEdgesIndexs[i].len() < 1 : continue
+    for j in (i+1)..<maxNodeIndex:
+      if inEdgesIndexs[j].len() < 1 : continue
+      if outEdgesIndexs[j].len() < 1 : continue
+      if inEdgesIndexs[j].len() != inEdgesIndexs[i].len():continue
+      if outEdgesIndexs[j].len() != outEdgesIndexs[i].len():continue
+
+  # 同じエッジ(dstも同じ)の削除
+  for i in 0..<self.len():
+    for j in (i+1)..<self.len():
+      if not self[i].isSame(self[j]): continue
+      if self[i].dst != self[j].dst : continue
+
+      self[j].src = -1
+  #[
+  for i in 0..<maxNodeIndex:
+    if inEdgesIndexs[i].len() < 1 : continue
+    if outEdgesIndexs[i].len() < 1 : continue
+    for j in (i+1)..<maxNodeIndex:
+      if inEdgesIndexs[j].len() < 1 : continue
+      if outEdgesIndexs[j].len() < 1 : continue
+      if inEdgesIndexs[j].len() != inEdgesIndexs[i].len():continue
+      if outEdgesIndexs[j].len() != outEdgesIndexs[i].len():continue
+      var ok = true
+      for ie in inEdgesIndexs[i] :
+        ok = ok and inEdgesIndexs[j].anyIt(self[it].isSame(self[ie]))
+      for oe in outEdgesIndexs[i] :
+        ok = ok and outEdgesIndexs[j].anyIt(self[it].isSame(self[oe]))
+      if ok:
+        echo "############"
+        echo inEdgesIndexs[j].mapIt(self[it])
+        echo inEdgesIndexs[i].mapIt(self[it])
+        echo outEdgesIndexs[j].mapIt(self[it])
+        echo outEdgesIndexs[i].mapIt(self[it])
+        let src = self[outEdgesIndexs[i][0]].src
+        let dst = self[inEdgesIndexs[i][0]].dst
+        for ie in inEdgesIndexs[j] : self[ie].dst = dst
+        for oe in outEdgesIndexs[j] : self[oe].src = src
+        result = true
+  ]#
+  self.deleteNeedlessEdges()
+]#
+
+
+
+
 proc drawGraph(self:seq[Edge]) : string =
   var dot = """digraph pietgraph {
     graph [
@@ -170,18 +245,19 @@ proc drawGraph(self:seq[Edge]) : string =
     ];
     a0 [label=""]
   """.replace("\n  ","\n")
-
   for info in self:
     let (src,dst,orderAndSizes,branch) = info
     var label = ""
-    for orderAndSize in orderAndSizes:
+    for i,orderAndSize in orderAndSizes:
       let (order,size) = orderAndSize
-      if order != Push: label &= "{order}\n".fmt()
-      else: label &= "+{size}\n".fmt()
+      if order != Push: label &= "{order} ".fmt()
+      else: label &= "+{size} ".fmt()
+      if i mod 6 == 0 : label &= "\n"
     let nodeLabel = if src == 0 : "START" else: ""
     dot &= " a{src} [label = \"{nodeLabel}\"];\n".fmt()
     let top = if branch < 0 : "" else: ($branch)
-    dot &= fmt"""  a{src} -> a{dst} [label = "{top}:{label}"];""" & "\n"
+    let dstNode = if orderAndSizes[^1].order == Terminate : "END" else: "a{dst}".fmt()
+    dot &= fmt"""  a{src} -> {dstNode} [label = "{top}:{label}"];""" & "\n"
   dot &= "}"
   return dot
 
@@ -211,6 +287,7 @@ proc newGraph*(filename:string) =
     var updated = false
     updated = updated or to.mergeBridge()
     updated = updated or to.filterExitBranch()
+    # updated = updated or to.deleteSameNode()
     if not updated: break
   to.showGraph()
 

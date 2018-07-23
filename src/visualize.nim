@@ -144,6 +144,6 @@ if isMainModule:
     if "-d" in param : draw = true
   for filename in params:
     if filename.startsWith("-") : continue
-    let graph = filename.newGraph(optimize=false)
+    let graph = filename.newGraph(optimize=true)
     if draw: graph.showGraph(showAll=true)
     if execute : graph.executeAsCpp()
