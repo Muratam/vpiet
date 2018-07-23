@@ -112,7 +112,7 @@ proc deleteNeedlessEdges(self:var seq[Edge]) =
         if outEdgesIndexs[i].len() == 0 : continue
         if self[outEdgesIndexs[i][0]].src == 0 : continue
         for oe in outEdgesIndexs[i]: self[oe].src = -1
-    discard self.clean()
+      discard self.clean()
     # branchだけが異なるエッジの削除
     block:
       let outEdgesIndexs = self.getOutEdgesIndexs()
@@ -129,6 +129,15 @@ proc deleteNeedlessEdges(self:var seq[Edge]) =
         self[outEdgesIndexs[i][0]].branch = -1
         for a in 1..<outEdgesIndexs[i].len():
           self[outEdgesIndexs[i][a]].src = -1
+      discard self.clean()
+    # 完全に同じエッジの削除
+    block:
+      for i in 0..<self.len():
+        for j in (i+1)..<self.len():
+          if not self[i].isSame(self[j]): continue
+          if self[i].src != self[j].src : continue
+          if (self[i].dst != self[j].dst) and (self[i].orderAndSizes[^1].order != Terminate) : continue
+          self[j].src = -1
     if not self.clean() : return
 
 
@@ -179,30 +188,13 @@ proc filterExitBranch(self:var seq[Edge]) :bool=
   self.deleteNeedlessEdges()
 
 
+
 #[
 proc deleteSameNode(self:var seq[Edge]):bool =
   result = false
   let inEdgesIndexs = self.getinEdgesIndexs()
   let outEdgesIndexs = self.getOutEdgesIndexs()
   let maxNodeIndex = self.getMaxNodeIndex()
-
-  for i in 0..<maxNodeIndex:
-    if inEdgesIndexs[i].len() < 1 : continue
-    if outEdgesIndexs[i].len() < 1 : continue
-    for j in (i+1)..<maxNodeIndex:
-      if inEdgesIndexs[j].len() < 1 : continue
-      if outEdgesIndexs[j].len() < 1 : continue
-      if inEdgesIndexs[j].len() != inEdgesIndexs[i].len():continue
-      if outEdgesIndexs[j].len() != outEdgesIndexs[i].len():continue
-
-  # 同じエッジ(dstも同じ)の削除
-  for i in 0..<self.len():
-    for j in (i+1)..<self.len():
-      if not self[i].isSame(self[j]): continue
-      if self[i].dst != self[j].dst : continue
-
-      self[j].src = -1
-  #[
   for i in 0..<maxNodeIndex:
     if inEdgesIndexs[i].len() < 1 : continue
     if outEdgesIndexs[i].len() < 1 : continue
@@ -216,6 +208,10 @@ proc deleteSameNode(self:var seq[Edge]):bool =
         ok = ok and inEdgesIndexs[j].anyIt(self[it].isSame(self[ie]))
       for oe in outEdgesIndexs[i] :
         ok = ok and outEdgesIndexs[j].anyIt(self[it].isSame(self[oe]))
+      ok = ok and (
+        outEdgesIndexs[j].anyIt(self[it].orderAndSizes.len() >= 5) or
+        inEdgesIndexs[j].anyIt(self[it].orderAndSizes.len() >= 5)
+      )
       if ok:
         echo "############"
         echo inEdgesIndexs[j].mapIt(self[it])
@@ -227,10 +223,10 @@ proc deleteSameNode(self:var seq[Edge]):bool =
         for ie in inEdgesIndexs[j] : self[ie].dst = dst
         for oe in outEdgesIndexs[j] : self[oe].src = src
         result = true
-  ]#
-  self.deleteNeedlessEdges()
-]#
+        self.deleteNeedlessEdges()
+        return true
 
+]#
 
 
 
@@ -255,9 +251,9 @@ proc drawGraph(self:seq[Edge]) : string =
       if i mod 6 == 0 : label &= "\n"
     let nodeLabel = if src == 0 : "START" else: ""
     dot &= " a{src} [label = \"{nodeLabel}\"];\n".fmt()
-    let top = if branch < 0 : "" else: ($branch)
+    let top = if branch < 0 : "" else: ($branch) & ":"
     let dstNode = if orderAndSizes[^1].order == Terminate : "END" else: "a{dst}".fmt()
-    dot &= fmt"""  a{src} -> {dstNode} [label = "{top}:{label}"];""" & "\n"
+    dot &= fmt"""  a{src} -> {dstNode} [label = "{top}{label}"];""" & "\n"
   dot &= "}"
   return dot
 
