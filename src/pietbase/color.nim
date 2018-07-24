@@ -11,6 +11,7 @@ const WhiteNumber* = hueMax * lightMax
 const BlackNumber* = WhiteNumber + 1
 const whiteOrder = Nop
 const blackOrder = Wall
+const maxColorNumber* = BlackNumber
 
 # 211 221 121 122 112 212 => 0 1 2 3 4 5
 # 200 220 020 022 002 202 => 6 ...... 11

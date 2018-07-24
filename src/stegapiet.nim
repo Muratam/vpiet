@@ -1,102 +1,61 @@
 import common
 import pietbase
 import pietize
+# TODO 分岐なし/Gt=End版を完成させる
+# 1D:
+#   - ビームサーチで Wx1 の画像を作成 (最善であるDPとの比較も可能!!)
+#     vpiet は 分岐なし -> とりあえず完全ランダムで
+#     画像 は w x 1 -> とりあえず ある画像のラスタリングで
+#     - [遊び] の部分を如何にして埋め込むかが重要(+Pop...)
+#     - jpg系 と png系 で異なるかもしれない
+#   - いい感じになってきたら vpietの方もランダム性減らしたい
+# 2D:
+#   - ビームサーチでWxH を作成
+# type OrderAndArgs* = tuple[order:EMoveType,operation:Order,args:seq[string]]
 
-proc steagnoPiet1D*(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
-  let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
-  let width = maxFunLen + 8 + self.len() * 2
-  let height = self.len() * 4 + 1
+if pietOrderType != TerminateAtGreater:
+  quit("only TerminateAtGreater is allowed")
+
+proc steagno1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietColor] =
+  # orders : inc dup ... push terminate
+  doAssert orders[^1].operation == Terminate         ,"invalid"
+  doAssert orders[0..^2].allIt(it.order == Operation),"invalid"
+  doAssert base.height == 1
+
+  let maxFunLen = orders.filterIt(not (it.order in[Goto,Goto])).len()
+  let width = maxFunLen + 8 + orders.len() * 2
+  let height = orders.len() * 4 + 1
   var pietMap = newMatrix[PietColor](width,height)
-  proc setMap(x,y:int,color:PietColor) =
-    pietMap[self.len() * 2 + x + 4 ,2 + 4*y] = color
-  # init
-  for x in 0..<pietMap.width:
-    for y in 0..<pietMap.height:
-      pietMap[x,y] = WhiteNumber
-
-  for y,orders in self:
-    # 左のLabelジャンプ路
-    block:
-      # 最上部
-      pietMap[2 * y + 2,0] = BlackNumber
-      pietMap[2 * y + 2,1] = BlackNumber
-      pietMap[2 * y + 1,0] = 0.PietColor
-      # キャッチ
-      pietMap[2*y+0,2+4*y] = 0.PietColor
-      pietMap[2*y+1,2+4*y] = 0.PietColor
-      pietMap[2*y+2,2+4*y] = 0.PietColor
-      pietMap[2*y+0,1+4*y] = BlackNumber
-      pietMap[2*y+2,1+4*y] = BlackNumber
-      pietMap[2*y+0,3+4*y] = BlackNumber
-      pietMap[2*y+2,3+4*y] = BlackNumber
-      pietMap[0,1+4*y] = BlackNumber
-      pietMap[0,2+4*y] = 0.PietColor
-      pietMap[0,3+4*y] = BlackNumber
-
-    # 分岐
-    var jumpOrder = ErrorVPietType
-    var jumpArgs = newSeq[int]()
-    for x,order in orders:
-      if order.order in [MoveTerminate,Goto,GoIf]:
-        jumpOrder = order.order
-        jumpArgs = order.args.mapIt(it.parseInt())
-        break
-    if jumpOrder == MoveTerminate:
-      pietMap[width - 1,1 + y * 4] = BlackNumber
-      pietMap[width - 1,2 + y * 4] = 0.PietColor
-      pietMap[width - 1,3 + y * 4] = 0.PietColor
-      pietMap[width - 2,3 + y * 4] = 0.PietColor
-      pietMap[width - 3,3 + y * 4] = BlackNumber
-      pietMap[width - 1,4 + y * 4] = BlackNumber
-      pietMap[width - 2,4 + y * 4] = BlackNumber
-      continue
-    var nowColor = 0.PietColor
-    pietMap[width - 2,2 + y * 4] = nowColor
-    nowColor = nowColor.decideNext(Order.Push)
-    pietMap[width - 1,2 + y * 4] = nowColor
-    pietMap[width - 1,3 + y * 4] = nowColor
-    nowColor = nowColor.decideNext(Order.Pointer)
-    pietMap[width - 1,4 + y * 4] = nowColor
-    case jumpOrder :
-      of Goto:
-        let x2 = 2 * jumpArgs[0] + 1
-        let y2 = 4 + 4 * y
-        pietMap[x2,y2] = 0.PietColor
-        pietMap[x2-1,y2] = BlackNumber
-      of GoIf:
-        let y2 = 4 + 4 * y
-        let minArg = min(jumpArgs[0],jumpArgs[1])
-        let maxArg = max(jumpArgs[0],jumpArgs[1])
-        nowColor = nowColor.decideNext(Order.Not)
-        pietMap[width - 2,4 + y * 4] = nowColor
-        nowColor = nowColor.decideNext(Order.Not)
-        pietMap[width - 3,4 + y * 4] = nowColor
-        pietMap[0+2*minArg,y2] = BlackNumber
-        pietMap[1+2*minArg,y2] = 0.PietColor
-        pietMap[2+2*maxArg,y2] = 0.PietColor
-        pietMap[1+2*maxArg,y2] = 0.PietColor.decideNext(Order.Pointer)
-        if jumpArgs[0] > jumpArgs[1]:
-          pietMap[width - 2,4 + y * 4] = nowColor.decideNext(Order.Not)
-      else: discard
-  # 左端上
-  pietMap[0,0] = 0.PietColor
-  pietMap[0,1] = 0.PietColor
-  pietMap[0,2] = 0.PietColor
-  # write orders
-  for y,orders in self:
-    var nowColor = 0.PietColor
-    pietMap[self.len() * 2 + 2 ,2 + 4*y] = nowColor
-    pietMap[self.len() * 2 + 2 ,1 + 4*y] = nowColor
-    pietMap[self.len() * 2 + 3 ,1 + 4*y] = BlackNumber
-    setMap(0,y,nowColor)
-    for x,order in orders:
-      if order.order in [MoveTerminate,Goto,GoIf]: continue
-      let pietOrder = order.operation
-      nowColor = nowColor.decideNext(pietOrder)
-      setMap(x+1,y,nowColor)
   return pietMap
+
+proc makeRandomOrders(length:int):seq[OrderAndArgs] =
+  randomize()
+  proc getValidOrders():seq[Order] =
+    result = @[]
+    for oo in orderBlock:
+      for o in oo:
+        if o notin [ErrorOrder,Terminate,Pointer,Switch] :
+          result &= o
+  result = newSeq[OrderAndArgs]()
+  let orderlist = getValidOrders()
+  for _ in 0..<length:
+    let order = orderlist[rand(orderlist.len()-1)]
+    let args = if order == Push : @["1"] else: @[]
+    result &= (Operation,order,args)
+  result &= (MoveTerminate,Terminate,@[])
+
+proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
+  randomize()
+  result = newMatrix[PietColor](width,height)
+  for x in 0..<width:
+    for y in 0..<height:
+      result[x,y] = rand(maxColorNumber).PietColor
 
 
 if isMainModule:
-  for filename in commandLineParams():
-    filename.labeling().toPiet().save()
+  let orders = makeRandomOrders(32)
+  echo orders
+  let baseImg = makeRandomPietColorMatrix(64,1)
+  let stegano = steagno1D(orders,baseImg)
+  # baseImg.save()
+  # stegano.save()
