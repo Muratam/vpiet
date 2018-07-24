@@ -4,11 +4,11 @@ import pietize
 
 proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
-  let width = maxFunLen + 6 + self.len() * 2
+  let width = maxFunLen + 8 + self.len() * 2
   let height = self.len() * 4 + 1
   var pietMap = newMatrix[PietColor](width,height)
   proc setMap(x,y:int,color:PietColor) =
-    pietMap[self.len() * 2 + x + 2 ,2 + 4*y] = color
+    pietMap[self.len() * 2 + x + 4 ,2 + 4*y] = color
   # init
   for x in 0..<pietMap.width:
     for y in 0..<pietMap.height:
@@ -85,6 +85,9 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   # write orders
   for y,orders in self:
     var nowColor = 0.PietColor
+    pietMap[self.len() * 2 + 2 ,2 + 4*y] = nowColor
+    pietMap[self.len() * 2 + 2 ,1 + 4*y] = nowColor
+    pietMap[self.len() * 2 + 3 ,1 + 4*y] = BlackNumber
     setMap(0,y,nowColor)
     for x,order in orders:
       if order.order in [MoveTerminate,Goto,GoIf]: continue
