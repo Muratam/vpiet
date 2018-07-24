@@ -2,7 +2,7 @@ import common
 import pietbase
 import pietize
 
-proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
+proc toPiet*(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
   let width = maxFunLen + 8 + self.len() * 2
   let height = self.len() * 4 + 1
@@ -99,4 +99,4 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
 
 if isMainModule:
   for filename in commandLineParams():
-    filename.labeling().toPiet().save("nimcache/piet.png")
+    filename.labeling().toPiet().save()

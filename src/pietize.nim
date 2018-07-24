@@ -3,7 +3,7 @@ import nre
 import pietbase
 import tables
 import nimPNG
-
+import osproc
 #[
 文法:
 基本命令:
@@ -107,7 +107,7 @@ proc labeling*(filename:string): seq[seq[OrderAndArgs]] =
 
 
 
-proc save*(self:Matrix[PietColor],filename:string) =
+proc save*(self:Matrix[PietColor],filename:string="/tmp/piet.png") =
   var pixels = newString(3 * self.width * self.height)
   for x in 0..<self.width:
     for y in 0..<self.height:
@@ -116,4 +116,6 @@ proc save*(self:Matrix[PietColor],filename:string) =
       pixels[3 * (x + y * self.width) + 1] = cast[char](g)
       pixels[3 * (x + y * self.width) + 2] = cast[char](b)
   discard savePNG24(filename,pixels,self.width,self.height)
+  discard startProcess("/usr/bin/open",args=[filename],options={})
+
 

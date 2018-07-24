@@ -1,6 +1,5 @@
 # 機能
-- pietcore : Pietを実行可能
-- topiet : vpiet形式からPiet画像を生成.
+- topiet : vpiet -> 回路図 Piet
 - steganopiet : ステガノっぽいPietを生成
 
 

@@ -2,16 +2,13 @@ import common
 import pietbase
 import pietize
 
-
-
-
-proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
+proc steagnoPiet1D*(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   let maxFunLen = self.mapIt(it.filterIt(not (it.order in[Goto,Goto])).len()).max()
-  let width = maxFunLen + 6 + self.len() * 2
+  let width = maxFunLen + 8 + self.len() * 2
   let height = self.len() * 4 + 1
   var pietMap = newMatrix[PietColor](width,height)
   proc setMap(x,y:int,color:PietColor) =
-    pietMap[self.len() * 2 + x + 2 ,2 + 4*y] = color
+    pietMap[self.len() * 2 + x + 4 ,2 + 4*y] = color
   # init
   for x in 0..<pietMap.width:
     for y in 0..<pietMap.height:
@@ -37,14 +34,14 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
       pietMap[0,3+4*y] = BlackNumber
 
     # 分岐
-    var jumpOrder = VPietOrder.ErrorOrder
+    var jumpOrder = ErrorVPietType
     var jumpArgs = newSeq[int]()
     for x,order in orders:
-      if order.order in [VPietOrder.Terminate,Goto,GoIf]:
+      if order.order in [MoveTerminate,Goto,GoIf]:
         jumpOrder = order.order
         jumpArgs = order.args.mapIt(it.parseInt())
         break
-    if jumpOrder == VPietOrder.Terminate:
+    if jumpOrder == MoveTerminate:
       pietMap[width - 1,1 + y * 4] = BlackNumber
       pietMap[width - 1,2 + y * 4] = 0.PietColor
       pietMap[width - 1,3 + y * 4] = 0.PietColor
@@ -85,14 +82,16 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
   pietMap[0,0] = 0.PietColor
   pietMap[0,1] = 0.PietColor
   pietMap[0,2] = 0.PietColor
-
   # write orders
   for y,orders in self:
     var nowColor = 0.PietColor
+    pietMap[self.len() * 2 + 2 ,2 + 4*y] = nowColor
+    pietMap[self.len() * 2 + 2 ,1 + 4*y] = nowColor
+    pietMap[self.len() * 2 + 3 ,1 + 4*y] = BlackNumber
     setMap(0,y,nowColor)
     for x,order in orders:
-      if order.order in [VPietOrder.Terminate,Goto,GoIf]: continue
-      let pietOrder = order.order.toPietOrder()
+      if order.order in [MoveTerminate,Goto,GoIf]: continue
+      let pietOrder = order.operation
       nowColor = nowColor.decideNext(pietOrder)
       setMap(x+1,y,nowColor)
   return pietMap
@@ -100,4 +99,4 @@ proc toPiet(self:seq[seq[OrderAndArgs]]) :Matrix[PietColor]=
 
 if isMainModule:
   for filename in commandLineParams():
-    filename.labeling().toPiet().save("nimcache/piet.png")
+    filename.labeling().toPiet().save()

@@ -57,7 +57,7 @@ proc toVPiet(order:OrderAndSize,debug:bool=false) : string =
 
 
 
-proc compileToCppCode(self:seq[Edge],debug:bool=false) : string =
+proc compileToCppCode*(self:seq[Edge],debug:bool=false) : string =
   const optimizedHeader =  staticRead("compile/optimized.cpp")
   result = optimizedHeader
   result &= "int main(){\n  start();\n"
@@ -68,7 +68,7 @@ proc compileToCppCode(self:seq[Edge],debug:bool=false) : string =
     result &= "a{src}:\n".fmt()
     let useBranches = self[outEdge[0]].branch >= 0
     if useBranches:
-      echo outEdge.mapIt(self[it].orderAndSizes[0].order)
+      # echo outEdge.mapIt(self[it].orderAndSizes[0].order)
       let order = self[outEdge[0]].orderAndSizes[0]
       result &= "  {order.toCpp(debug)}\n".fmt()
       for oe in outEdge:
@@ -101,7 +101,7 @@ proc executeAsCpp*(self:seq[Edge],
   discard startProcess("/usr/local/bin/code",args=[cppFileName],options={})
 
 
-proc compileToVPietCode(self:seq[Edge]):string =
+proc compileToVPietCode*(self:seq[Edge]):string =
   result = ""
   let outEdges = self.getOutEdgesIndexs()
   for i ,outEdge in outEdges:
@@ -124,6 +124,14 @@ proc compileToVPietCode(self:seq[Edge]):string =
         of 2: result &= "  go " & dstEdges.mapIt("a{dst}_{it}".fmt()).join(" ") & "\n"
         else: quit("invalid branch")
 
+
+proc saveAsVPiet*(self:seq[Edge],
+              vpietFileName:string="/tmp/piet.vpiet") =
+  let code = self.compileToVPietCode()
+  let f = open(vpietFileName,fmWrite)
+  f.write(code)
+  f.close()
+  discard startProcess("/usr/local/bin/code",args=[vpietFileName],options={})
 
 
 proc drawGraph(self:seq[Edge]) : string =
@@ -173,12 +181,14 @@ if isMainModule:
   if params.filterIt(it.startsWith("-")).len() == 0: quit("no options")
   var execute = false
   var draw = false
+  var vpiet = false
   for param in params:
     if "-e" in param : execute = true
     if "-d" in param : draw = true
+    if "-v" in param : vpiet = true
   for filename in params:
     if filename.startsWith("-") : continue
     let graph = filename.newGraph()
-    echo graph.compileToVPietCode()
     if draw: graph.showGraph()
     if execute : graph.executeAsCpp()
+    if vpiet : graph.saveAsVPiet()
