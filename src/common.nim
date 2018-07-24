@@ -80,35 +80,23 @@ proc start*(self:var StopWatch) =
 proc stop*(self:var StopWatch) =
   self.sum += cpuTime() - self.pre
 proc `$`*(self:StopWatch):string = fmt"{self.sum}s"
+# Union Find
+type UnionFindTree[T] = ref object
+  parent: seq[int]
+proc newUnionFindTree(n:int) : UnionFindTree =
+  new(result)
+  result.parent = newSeqWith(n,-1)
+proc root(self:var UnionFindTree,x:int):int =
+  if self.parent[x] < 0 : return x
+  else:
+    self.parent[x] = self.root(self.parent[x])
+    return self.parent[x]
+proc merge(self:var UnionFindTree,x,y:int):bool=
+  var x = self.root(x)
+  var y = self.root(y)
+  if x == y : return false
+  if self.parent[y] < self.parent[x] : (x,y) = (y,x)
+  if self.parent[y] == self.parent[x] : self.parent[x] -= 1
+  self.parent[y] = x
+  return true
 
-# unicode
-#[
-
-type WStringConverter {. importcpp:"std::wstring_convert",header:"<locale>",header:"<codecvt>" .} = object
-proc newWStringConverter(): WStringConverter {. importcpp: "std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t>()" nodecl.}
-type U16String{. importcpp:"std::u16string", header:"<locale>",header:"<codecvt>" .} = object
-proc newU16String(a:int16 ): U16String {. importcpp: "std::u16string() + (char16_t)@", nodecl.}
-type U8String{. importcpp:"std::u8string", header:"<locale>",header:"<codecvt>" .} = object
-# proc newU8String(a:int ): U8String {. importcpp: "std::u8string() + @", nodecl.}
-proc to_bytes(self:WStringConverter,u16str:U16String) :U8String {.importcpp: "#.to_bytes(@)",nodecl.}
-proc from_bytes(self:WStringConverter,u8str:U8String) :U16String {.importcpp: "#.from_bytes(@)",nodecl.}
-proc getU16(self:U16String): int16 {.importcpp: "#.at(0)",nodecl.}
-proc getU8(self:U8String): int {.importcpp: "#.at(0)",nodecl.}
-
-proc u16Tou8*(a:int16) :int  =
-  let conv = newWStringConverter()
-  let u16str = newU16String(a)
-  return conv.to_bytes(u16str).getU8()
-
-# proc u8Tou16*(a:int):int16  =
-  # var u8str = newU8String(a)
-  # return newWStringConverter().from_bytes(u8str).getU16()
-int main()
-{
-  std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
-  char16_t a = 12354;
-  std::u16string str;
-  // u8str : converter.to_bytes(str + a);
-  // toInt (str + a)[0]
-}
-]#

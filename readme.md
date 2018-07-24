@@ -1,3 +1,9 @@
+# 機能
+- topiet : vpiet -> 回路図 Piet
+- steganopiet : ステガノっぽいPietを生成
+
+
+
 # vpiet
 1. can execute Piet on CUI ! (high speed !! big png file supported !!)
 2. can edit Piet on CUI ! (Cool!!)

@@ -5,7 +5,6 @@ export pietmap, indexto
 
 
 type
-
   DebugMode* = ref object
     # 通常は off だがDebug割り込み用に存在
     isOn: bool
