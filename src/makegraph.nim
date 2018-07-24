@@ -198,7 +198,7 @@ proc newGraph*(filename:string) :seq[Edge]=
   let indexTo = filename.newPietMap().newIndexTo()
   var to = indexTo.makeShortEdges().toEdges()
   while true:
-    echo "check"
+    # echo "check"
     var updated = false
     updated = updated or to.mergeBridge()
     updated = updated or to.filterExitBranch()
