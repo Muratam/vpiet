@@ -75,8 +75,8 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   #            -> dp[*,0,1] (Nopをした(C->White / White->C))
   #                        TODO : Nop (次がPushではないので同じ色)
   #                        TODO : 捨てる前提でPush/Not/Dup...を行う
-  echo orders
-  echo base.toConsole()
+  # echo orders
+  # echo base.toConsole()
   let chromMax = hueMax * lightMax
   const EPS = 1e12.int
   # 有彩色 + 白 (黒は使用しない)
@@ -115,6 +115,9 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       for i in 0..<chromMax: # ([]->白 | 白->[])
         update(1,0,i,chromMax)
         update(1,0,chromMax,i)
+      # TODO: 同じ色Nop(chunk)
+      # TODO: (Push)+(二項演算,Nop,Pop,Dup) 余剰数もDP
+
   proc showPath(startIndex,startNop,startOrd:int) =
     var index = startIndex
     var nop = startNop
@@ -135,6 +138,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
     echo base.toConsole()
     echo echoMat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
     echo orders
+  var mins = newSeq[tuple[val,index,nop,ord:int]]()
   for progress in 0..<base.width:
     for nop in 0..progress:
       let ord = progress - nop
@@ -142,7 +146,9 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       let minIndex = toSeq(0..chromMax).mapIt(dp[it][nop][ord].val).argmin()
       let minVal = dp[minIndex][nop][ord].val
       if minVal == EPS : continue
-      showPath(minIndex,nop,ord)
+      mins &= (minVal,minIndex,nop,ord)
+  for m in mins.sorted((a,b)=>a.val - b.val)[0..min(3,mins.len())]:
+    showPath(m.index,m.nop,m.ord)
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
