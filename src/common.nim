@@ -72,7 +72,8 @@ const PosUp* = (0.int32,-1.int32)
 const PosDown* = (0.int32,1.int32)
 const PosRight* = (1.int32,0.int32)
 const PosLeft* = (-1.int32,0.int32)
-
+template `max=`*(x,y:typed):void = x = max(x,y)
+template `min=`*(x,y:typed):void = x = min(x,y)
 # stopWatch
 type StopWatch* = tuple[sum,pre:float]
 proc start*(self:var StopWatch) =
@@ -100,3 +101,24 @@ proc merge(self:var UnionFindTree,x,y:int):bool=
   self.parent[y] = x
   return true
 
+proc argmin*[T](arr:seq[T]):int =
+  if arr.len() == 0 : return -1
+  if arr.len() == 1 : return 0
+  var mini = 0
+  var mina = arr[0]
+  for i,a in arr:
+    if a >= mina : continue
+    mina = a
+    mini = i
+  return mini
+
+proc argmax*[T](arr:seq[T]):int =
+  if arr.len() == 0 : return -1
+  if arr.len() == 1 : return 0
+  var maxi = 0
+  var maxa = arr[0]
+  for i,a in arr:
+    if a <= maxa : continue
+    maxa = a
+    maxi = i
+  return maxi

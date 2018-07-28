@@ -194,8 +194,8 @@ proc filterExitBranch(self:var seq[Edge]) : bool =
 
 
 # グラフを作成
-proc newGraph*(filename:string) :seq[Edge]=
-  let indexTo = filename.newPietMap().newIndexTo()
+proc newGraph*[T](base:T) :seq[Edge]=
+  let indexTo = base.newPietMap().newIndexTo()
   var to = indexTo.makeShortEdges().toEdges()
   while true:
     # echo "check"
@@ -209,3 +209,4 @@ if isMainModule:
   if params.len() == 0: quit("no params")
   for filename in params:
     discard filename.newGraph()
+
