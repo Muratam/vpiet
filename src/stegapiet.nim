@@ -87,11 +87,10 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
     # if colorTable[i][operation.int] == -1:
     #   colorTable[i][operation.int] = i.PietColor.decideNext(operation)
     # return colorTable[i][operation.int]
-  block: # dp[*,0,0], 最初は白以外を置くはず
+  block: # 最初は白以外
     let color = base[0,0]
     for i in 0..<chromMax:
       dp[i][0][0] = @[(distance(color,i.PietColor),initDPKey)]
-
   for progress in 0..<(base.width-1):
     let baseColor = base[progress+1,0]
     proc diff(color:int) : int = distance(baseColor,color.PietColor)
@@ -105,10 +104,10 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
         if nextDp.len() == next.fund:
           dp[next.color][next.nop][next.ord] &= dpVal
         else:
-          for i in 0..<next.fund:
+          for i in 0..<(next.fund-nextDp.len()): # WARN
             dp[next.color][next.nop][next.ord] &= (EPS,initDPKey)
           dp[next.color][next.nop][next.ord] &= dpVal
-      elif nextVal <= dp[next].val: return
+      elif nextVal >= dp[next].val: return
       else: dp[next.color][next.nop][next.ord][next.fund] = dpVal
     for nop in 0..progress:
       let ord = progress - nop
@@ -133,11 +132,17 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
           update(d(chromMax,0,0,f),d(i,1,0,f))
       # Fund
       for i in 0..<chromMax:
+        # # そんなわけないが任意の色に行けるとする場合(これはうまく行かなければおかしい)
+        # for j in 0..<chromMax:
+        #   for f in 0..<here(i).len():
+        #     update(d(i,0,0,f),d(j,1,0,f+1))
+        #   for f in 1..<here(i).len():
+        #     update(d(i,0,0,f),d(j,1,0,f-1))
+        # 普通
         for f in 0..<here(i).len():
           update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
         for f in 1..<here(i).len():
           update(d(i,0,0,f),d(i.getNextColor(Pop),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Switch),1,0,f-1))
           update(d(i,0,0,f),d(i.getNextColor(Not),1,0,f))
           update(d(i,0,0,f),d(i.getNextColor(Dup),1,0,f+1))
         for f in 2..<here(i).len():
@@ -176,7 +181,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       let minVal = dp[minIndex][nop][ord]
       if minVal.len() == 0 or minVal[0].val == EPS : continue
       mins &= (minIndex,nop,ord,0)
-  for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..min(10,mins.len())]:
+  for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..<min(3,mins.len())]:
     showPath(m)
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
@@ -201,7 +206,6 @@ proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
   for x in 0..<width:
     for y in 0..<height:
       result[x,y] = rand(maxColorNumber).PietColor
-
 
 if isMainModule:
   let orders = makeRandomOrders(20)

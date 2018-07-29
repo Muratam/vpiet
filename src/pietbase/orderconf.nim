@@ -21,3 +21,11 @@ elif pietOrderType == TerminateAtGreater:
     [Dup,Roll,InN],
     [InC,OutN,OutC],
   ]
+  # const orderBlock* = [
+  #   [ErrorOrder,Push,Pop],
+  #   [OutC,Sub,Terminate],
+  #   [Div,Roll,Not],
+  #   [Mul,Pointer,Switch],
+  #   [Dup,Mod,InN],
+  #   [InC,OutN,Add],
+  # ]
