@@ -55,9 +55,10 @@ proc distance(a,b:PietColor):int=
     let dist = abs(x.int-y.int)
     return dist
     # const th = min(0xc0-0x00,0xff-0xc0)
-      # if dist < th : 0
-      # elif dist < 0xff : 1
-      # else : 2
+    # return
+    #   if dist < th : 0
+    #   elif dist < 0xff : 1
+    #   else : 2
   # 同じ:0 ~ 白->黒:6
   return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
 
@@ -69,14 +70,6 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   doAssert base.width >= orders.len()
   result = newMatrix[PietColor](base.width,1)
   # https://photos.google.com/photo/AF1QipMlNFgMkP-_2AtsRZcYbPV3xkBjU0q8bKxql9p3?hl=ja
-  # まずはDPで完全な解をさがす
-  # dp [先端のcolor,進行したorder数,今までのNop数] (order+nopの順で進めていく)
-  # dp [*,0,0] -> dp[*,1,0] (命令を進めた)
-  #            -> dp[*,0,1] (Nopをした(C->White / White->C))
-  #                        TODO : Nop (次がPushではないので同じ色)
-  #                        TODO : 捨てる前提でPush/Not/Dup...を行う
-  # echo orders
-  # echo base.toConsole()
   let chromMax = hueMax * lightMax
   const EPS = 1e12.int
   # 有彩色 + 白 (黒は使用しない)
@@ -89,6 +82,11 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       echo key
     doAssert self[key.color][key.nop][key.ord].len() > key.fund
     self[key.color][key.nop][key.ord][key.fund]
+  var colorTable = newSeqWith(PietColor.high.int,newSeqWith(Order.high.int,-1))
+  proc getNextColor(i:int,operation:Order):int = i.PietColor.decideNext(operation)
+    # if colorTable[i][operation.int] == -1:
+    #   colorTable[i][operation.int] = i.PietColor.decideNext(operation)
+    # return colorTable[i][operation.int]
   block: # dp[*,0,0], 最初は白以外を置くはず
     let color = base[0,0]
     for i in 0..<chromMax:
@@ -99,6 +97,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
     proc diff(color:int) : int = distance(baseColor,color.PietColor)
     proc update(pre,next:DPKey) =
       if dp[pre.color][pre.nop][pre.ord].len() == 0 : return
+      if dp[pre].val >= EPS: return
       let nextDp = dp[next.color][next.nop][next.ord]
       let nextVal = dp[pre].val + diff(next.color)
       let dpVal = (nextVal,pre)
@@ -106,7 +105,9 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
         if nextDp.len() == next.fund:
           dp[next.color][next.nop][next.ord] &= dpVal
         else:
-          doAssert false
+          for i in 0..<next.fund:
+            dp[next.color][next.nop][next.ord] &= (EPS,initDPKey)
+          dp[next.color][next.nop][next.ord] &= dpVal
       elif nextVal <= dp[next].val: return
       else: dp[next.color][next.nop][next.ord][next.fund] = dpVal
     for nop in 0..progress:
@@ -116,9 +117,9 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       let order = orders[ord]
       proc here(color:int): seq[DPVal] = dp[color][nop][ord]
       proc d(color,dNop,dOrd,f:int) : DPKey = (color,nop+dNop,ord+dOrd,f)
-      for i in 0..<chromMax: # 命令を進めた
-        let nextColor = i.PietColor.decideNext(order.operation).int
-        update(d(i,0,0,0),d(nextColor,0,1,0))
+      # 命令を進めた
+      for i in 0..<chromMax:
+        update(d(i,0,0,0),d(i.getNextColor(order.operation),0,1,0))
       # Nop (白 -> 白)
       for f in 0..<here(chromMax).len():
         update(d(chromMax,0,0,f),d(chromMax,1,0,f))
@@ -130,6 +131,22 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       for f in 0..<here(chromMax).len():
         for i in 0..<chromMax:
           update(d(chromMax,0,0,f),d(i,1,0,f))
+      # Fund
+      for i in 0..<chromMax:
+        for f in 0..<here(i).len():
+          update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
+        for f in 1..<here(i).len():
+          update(d(i,0,0,f),d(i.getNextColor(Pop),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Switch),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Not),1,0,f))
+          update(d(i,0,0,f),d(i.getNextColor(Dup),1,0,f+1))
+        for f in 2..<here(i).len():
+          update(d(i,0,0,f),d(i.getNextColor(Add),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Sub),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Mul),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Div),1,0,f-1))
+          update(d(i,0,0,f),d(i.getNextColor(Mod),1,0,f-1))
+
   echo "updated"
   # TODO: 同じ色Nop(chunk)
   proc showPath(startKey:DPKey) =
@@ -146,7 +163,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
     echo dp[startKey].val,":",colors.len()
     echo echoMat.toConsole()
     echo base.toConsole()
-    echo echoMat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    echo echoMat.newGraph()[0].orderAndSizes.mapIt(it.order)
     echo orders
   var mins = newSeq[DPKey]()
   for progress in 0..<base.width:
@@ -159,7 +176,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
       let minVal = dp[minIndex][nop][ord]
       if minVal.len() == 0 or minVal[0].val == EPS : continue
       mins &= (minIndex,nop,ord,0)
-  for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..min(3,mins.len())]:
+  for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..min(10,mins.len())]:
     showPath(m)
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
@@ -188,7 +205,7 @@ proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
 
 if isMainModule:
   let orders = makeRandomOrders(20)
-  let baseImg = makeRandomPietColorMatrix(64,1)
+  let baseImg = makeRandomPietColorMatrix(100,1)
   let stegano = stegano1D(orders,baseImg)
   # baseImg.save()
   # stegano.save()
