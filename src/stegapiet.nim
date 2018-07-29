@@ -83,49 +83,55 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   type DPKey = tuple[color,nop,ord,fund:int]  # [color][Nop][Order][Fund]
   type DPVal = tuple[val:int,preKey:DPKey] # Σ,前のやつ
   const initDPKey :DPKey = (0,0,0,0)
-  # const initDpVal :DPVal = (EPS,initDPKey)
   var dp = newSeqWith(chromMax + 1,newSeqWith(base.width,newSeqWith(base.width,newSeq[DPVal]())))
   proc `[]` (self:var seq[seq[seq[seq[DPVal]]]],key:DPKey) : DPVal =
+    if self[key.color][key.nop][key.ord].len() <= key.fund:
+      echo key
     doAssert self[key.color][key.nop][key.ord].len() > key.fund
     self[key.color][key.nop][key.ord][key.fund]
-  # proc `[]=` (self:var seq[seq[seq[seq[DPVal]]]],key:DPKey,val:DPVal) =
-  #   template here : untyped = self[key.color][key.nop][key.ord]
-  #   if here.len() <= key.fund:
-  #     if here.len() == key.fund: here &= val
-  #     else: raiseAssert("invalid")
-  #   else: here[key.fund] = val
   block: # dp[*,0,0], 最初は白以外を置くはず
     let color = base[0,0]
     for i in 0..<chromMax:
       dp[i][0][0] = @[(distance(color,i.PietColor),initDPKey)]
+
   for progress in 0..<(base.width-1):
     let baseColor = base[progress+1,0]
+    proc diff(color:int) : int = distance(baseColor,color.PietColor)
+    proc update(pre,next:DPKey) =
+      if dp[pre.color][pre.nop][pre.ord].len() == 0 : return
+      let nextDp = dp[next.color][next.nop][next.ord]
+      let nextVal = dp[pre].val + diff(next.color)
+      let dpVal = (nextVal,pre)
+      if nextDp.len() <= next.fund :
+        if nextDp.len() == next.fund:
+          dp[next.color][next.nop][next.ord] &= dpVal
+        else:
+          doAssert false
+      elif nextVal <= dp[next].val: return
+      else: dp[next.color][next.nop][next.ord][next.fund] = dpVal
     for nop in 0..progress:
       let ord = progress - nop
       # もう命令を全て終えた
       if ord >= orders.len(): continue
-      # DP更新
-      proc diff(color:int) : int = distance(baseColor,color.PietColor)
-      proc update(dNop,dOrd,preColor,nextColor:int) =
-        let preDp = dp[preColor][nop][ord]
-        let nextDp = dp[nextColor][nop+dNop][ord+dOrd]
-        let nextVal = preDp[0].val + diff(nextColor)
-        let dpVal = (nextVal,(preColor,nop,ord,0))
-        if nextDp.len() == 0: dp[nextColor][nop+dNop][ord+dOrd] = @[dpVal]
-        elif nextVal < nextDp[0].val : return
-        else: dp[nextColor][nop+dNop][ord+dOrd][0] = dpVal
       let order = orders[ord]
-      # 命令を進めた
-      for i in 0..<chromMax:
+      proc here(color:int): seq[DPVal] = dp[color][nop][ord]
+      proc d(color,dNop,dOrd,f:int) : DPKey = (color,nop+dNop,ord+dOrd,f)
+      for i in 0..<chromMax: # 命令を進めた
         let nextColor = i.PietColor.decideNext(order.operation).int
-        update(0,1,i,nextColor)
-      # Nopをした
-      update(1,0,chromMax,chromMax) # 白 -> 白
-      for i in 0..<chromMax: # ([]->白 | 白->[])
-        update(1,0,i,chromMax)
-        update(1,0,chromMax,i)
-      # TODO: 同じ色Nop(chunk)
-      # TODO: (Push)+(二項演算,Nop,Pop,Dup) 余剰数もDP
+        update(d(i,0,0,0),d(nextColor,0,1,0))
+      # Nop (白 -> 白)
+      for f in 0..<here(chromMax).len():
+        update(d(chromMax,0,0,f),d(chromMax,1,0,f))
+      # Nop ([]->白)
+      for i in 0..<chromMax:
+        for f in 0..<here(i).len():
+          update(d(i,0,0,f),d(chromMax,1,0,f))
+      # Nop (白->[])
+      for f in 0..<here(chromMax).len():
+        for i in 0..<chromMax:
+          update(d(chromMax,0,0,f),d(i,1,0,f))
+  echo "updated"
+  # TODO: 同じ色Nop(chunk)
   proc showPath(startKey:DPKey) =
     var key = startKey
     var colors = newSeq[int]()
