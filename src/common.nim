@@ -51,6 +51,15 @@ proc newMatrix*[T](width,height:int):Matrix[T] =
   result.data = newSeq[T](width * height)
   result.width = width
   result.height = height
+proc deepCopy*[T](self:Matrix[T]):Matrix[T] =
+  new(result)
+  result.width = self.width
+  result.height = self.height
+  result.data = self.data
+proc point*[T](self:var Matrix[T],fun:(proc (x,y:int):T)) =
+  for x in 0..<self.width:
+    for y in 0..<self.height:
+      self[x,y] = fun(x,y)
 proc `[]=`*[T](self:var Matrix[T],x,y:Natural,value:T) =
   self.data[x + self.width * y] = value
 proc `[]`*[T](self: Matrix[T],x,y:Natural): T =

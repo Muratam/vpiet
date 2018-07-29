@@ -50,7 +50,6 @@ proc decideOrder*(now,next:PietColor): Order =
   return orderBlock[hueDiff][lightDiff]
 
 proc decideNext*(now:PietColor,order:Order): PietColor =
-  assert(not (order in [ErrorOrder,Terminate]))
   if order == whiteOrder:
     result.nwb = White
     return
@@ -61,3 +60,4 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
       result.hue = now.hue + h
       result.light = now.light + l
       return
+  doAssert false,"cant decide color"
