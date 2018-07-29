@@ -80,31 +80,40 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   let chromMax = hueMax * lightMax
   const EPS = 1e12.int
   # 有彩色 + 白 (黒は使用しない)
-  # [color][Nop][Order]
-  type DPTuple = tuple[val,pre,dNop,dOrd:int]
-  const initDpTuple :DPTuple= (val:EPS,pre:WhiteNumber,dNop:0,dOrd:0)
-  var dp = newSeqWith(chromMax + 1,newSeqWith(base.width,newSeqWith(base.width,initDpTuple)))
+  type DPKey = tuple[color,nop,ord,fund:int]  # [color][Nop][Order][Fund]
+  type DPVal = tuple[val:int,preKey:DPKey] # Σ,前のやつ
+  const initDPKey :DPKey = (0,0,0,0)
+  # const initDpVal :DPVal = (EPS,initDPKey)
+  var dp = newSeqWith(chromMax + 1,newSeqWith(base.width,newSeqWith(base.width,newSeq[DPVal]())))
+  proc `[]` (self:var seq[seq[seq[seq[DPVal]]]],key:DPKey) : DPVal =
+    doAssert self[key.color][key.nop][key.ord].len() > key.fund
+    self[key.color][key.nop][key.ord][key.fund]
+  # proc `[]=` (self:var seq[seq[seq[seq[DPVal]]]],key:DPKey,val:DPVal) =
+  #   template here : untyped = self[key.color][key.nop][key.ord]
+  #   if here.len() <= key.fund:
+  #     if here.len() == key.fund: here &= val
+  #     else: raiseAssert("invalid")
+  #   else: here[key.fund] = val
   block: # dp[*,0,0], 最初は白以外を置くはず
     let color = base[0,0]
     for i in 0..<chromMax:
-      dp[i][0][0].val = distance(color,i.PietColor)
+      dp[i][0][0] = @[(distance(color,i.PietColor),initDPKey)]
   for progress in 0..<(base.width-1):
     let baseColor = base[progress+1,0]
     for nop in 0..progress:
       let ord = progress - nop
-      # もう命令を全て終えたやつ
+      # もう命令を全て終えた
       if ord >= orders.len(): continue
       # DP更新
       proc diff(color:int) : int = distance(baseColor,color.PietColor)
       proc update(dNop,dOrd,preColor,nextColor:int) =
-        template preDp :untyped = dp[preColor][nop][ord]
-        template nextDp:untyped = dp[nextColor][nop+dNop][ord+dOrd]
-        let nextVal = preDp.val + diff(nextColor)
-        if nextVal >= nextDp.val : return
-        nextDp.val = nextVal
-        nextDp.pre = preColor
-        nextDp.dNop = dNop
-        nextDp.dOrd = dOrd
+        let preDp = dp[preColor][nop][ord]
+        let nextDp = dp[nextColor][nop+dNop][ord+dOrd]
+        let nextVal = preDp[0].val + diff(nextColor)
+        let dpVal = (nextVal,(preColor,nop,ord,0))
+        if nextDp.len() == 0: dp[nextColor][nop+dNop][ord+dOrd] = @[dpVal]
+        elif nextVal < nextDp[0].val : return
+        else: dp[nextColor][nop+dNop][ord+dOrd][0] = dpVal
       let order = orders[ord]
       # 命令を進めた
       for i in 0..<chromMax:
@@ -117,38 +126,35 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
         update(1,0,chromMax,i)
       # TODO: 同じ色Nop(chunk)
       # TODO: (Push)+(二項演算,Nop,Pop,Dup) 余剰数もDP
-
-  proc showPath(startIndex,startNop,startOrd:int) =
-    var index = startIndex
-    var nop = startNop
-    var ord = startOrd
-    var indexes = newSeq[int]()
-    while nop != 0 or ord != 0:
-      indexes &= index
-      let nowDp = dp[index][nop][ord]
-      nop -= nowDp.dNop
-      ord -= nowDp.dOrd
-      index = nowDp.pre
-    indexes &= index
-    indexes.reverse()
-    var echoMat = newMatrix[PietColor](indexes.len(),1)
-    for i,index in indexes: echoMat[i,0] = index.PietColor
-    echo dp[startIndex][startNop][startOrd].val,":",indexes.len()
+  proc showPath(startKey:DPKey) =
+    var key = startKey
+    var colors = newSeq[int]()
+    while not(key.nop == 0 and key.ord == 0 and key.fund == 0):
+      colors &= key.color
+      let nowDp = dp[key]
+      key = nowDp.preKey
+    colors &= key.color
+    colors.reverse()
+    var echoMat = newMatrix[PietColor](colors.len(),1)
+    for i,color in colors: echoMat[i,0] = color.PietColor
+    echo dp[startKey].val,":",colors.len()
     echo echoMat.toConsole()
     echo base.toConsole()
     echo echoMat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
     echo orders
-  var mins = newSeq[tuple[val,index,nop,ord:int]]()
+  var mins = newSeq[DPKey]()
   for progress in 0..<base.width:
     for nop in 0..progress:
       let ord = progress - nop
       if ord < orders.len(): continue
-      let minIndex = toSeq(0..chromMax).mapIt(dp[it][nop][ord].val).argmin()
-      let minVal = dp[minIndex][nop][ord].val
-      if minVal == EPS : continue
-      mins &= (minVal,minIndex,nop,ord)
-  for m in mins.sorted((a,b)=>a.val - b.val)[0..min(3,mins.len())]:
-    showPath(m.index,m.nop,m.ord)
+      let minIndex = toSeq(0..chromMax).mapIt(
+        if dp[it][nop][ord].len() == 0 : EPS else:dp[it][nop][ord][0].val
+        ).argmin()
+      let minVal = dp[minIndex][nop][ord]
+      if minVal.len() == 0 or minVal[0].val == EPS : continue
+      mins &= (minIndex,nop,ord,0)
+  for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..min(3,mins.len())]:
+    showPath(m)
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
