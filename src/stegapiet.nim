@@ -3,17 +3,14 @@ import pietbase
 import pietize
 import curse
 import makegraph
-# TODO 分岐なし/Gt=End版を完成させる
-# 1D:
-#   - ビームサーチで Wx1 の画像を作成 (最善であるDPとの比較も可能!!)
-#     vpiet は 分岐なし -> とりあえず完全ランダムで
-#     画像 は w x 1 -> とりあえず ある画像のラスタリングで
-#     - [遊び] の部分を如何にして埋め込むかが重要(+Pop...)
-#     - jpg系 と png系 で異なるかもしれない
-#   - いい感じになってきたら vpietの方もランダム性減らしたい
-# 2D:
-#   - ビームサーチでWxH を作成
-# type OrderAndArgs* = tuple[order:EMoveType,operation:Order,args:seq[string]]
+import heapqueue
+
+# 分岐なし/Gt=End版を完成させる
+# 状態数が多すぎて愚直なビームサーチでは程遠い
+# DP[color][nop][ord][fund] で progress = nop+ord 毎に回す
+# 探索的手法: 同じ [0..ord] 空間内に N個の [PietMat,先頭{Color,DP,CC,Fund}] を用意して
+#         : 次の [0..ord+1] 空間に飛ばす(N^2中の上位N個)
+
 
 if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
@@ -48,7 +45,17 @@ proc `$`(orders:seq[OrderAndArgs]):string =
     result &= " "
 
 # 色差関数
-proc distance(a,b:PietColor):int=
+proc distance(a,b:PietColor) : int =
+  # if a == b : return 0
+  # const w = 10
+  # const maxW = ((w * hueMax div 2) + lightMax ) * 2
+  # if a == WhiteNumber and b == BlackNumber : return maxW
+  # if a == BlackNumber and b == WhiteNumber : return maxW
+  # if a == WhiteNumber : return w+b.light
+  # if b == WhiteNumber : return w+a.light
+  # if a == BlackNumber : return w+2-b.light
+  # if b == BlackNumber : return w+2-a.light
+  # return abs(a.light - b.light) + w * min(abs(a.hue - b.hue),abs(abs(a.hue - b.hue) - hueMax))
   let (ar,ag,ab) = a.toRGB()
   let (br,bg,bb) = b.toRGB()
   proc diff(x,y:uint8):int =
@@ -62,13 +69,22 @@ proc distance(a,b:PietColor):int=
   # 同じ:0 ~ 白->黒:6
   return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
 
-proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietColor] =
+var colorTable = newSeqWith(PietColor.high.int+1,newSeqWith(Order.high.int+1,-1))
+proc getNextColor(i:int,operation:Order):int = #i.PietColor.decideNext(operation)
+  if colorTable[i][operation.int] == -1:
+    colorTable[i][operation.int] = i.PietColor.decideNext(operation)
+  return colorTable[i][operation.int]
+
+proc checkStegano1D(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   # orders : inc dup ... push terminate
   doAssert orders[^1].operation == Terminate         ,"invalid"
   doAssert orders[0..^2].allIt(it.order == Operation),"invalid"
   doAssert base.height == 1
   doAssert base.width >= orders.len()
-  result = newMatrix[PietColor](base.width,1)
+
+proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+  checkStegano1D(orders,base)
+  # result = newMatrix[PietColor](base.width,1)
   # https://photos.google.com/photo/AF1QipMlNFgMkP-_2AtsRZcYbPV3xkBjU0q8bKxql9p3?hl=ja
   let chromMax = hueMax * lightMax
   const EPS = 1e12.int
@@ -76,22 +92,17 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   type DPKey = tuple[color,nop,ord,fund:int]  # [color][Nop][Order][Fund]
   type DPVal = tuple[val:int,preKey:DPKey] # Σ,前のやつ
   const initDPKey :DPKey = (0,0,0,0)
+  const maxFund = 10
   var dp = newSeqWith(chromMax + 1,newSeqWith(base.width,newSeqWith(base.width,newSeq[DPVal]())))
   proc `[]` (self:var seq[seq[seq[seq[DPVal]]]],key:DPKey) : DPVal =
-    if self[key.color][key.nop][key.ord].len() <= key.fund:
-      echo key
     doAssert self[key.color][key.nop][key.ord].len() > key.fund
     self[key.color][key.nop][key.ord][key.fund]
-  var colorTable = newSeqWith(PietColor.high.int,newSeqWith(Order.high.int,-1))
-  proc getNextColor(i:int,operation:Order):int = i.PietColor.decideNext(operation)
-    # if colorTable[i][operation.int] == -1:
-    #   colorTable[i][operation.int] = i.PietColor.decideNext(operation)
-    # return colorTable[i][operation.int]
   block: # 最初は白以外
     let color = base[0,0]
     for i in 0..<chromMax:
       dp[i][0][0] = @[(distance(color,i.PietColor),initDPKey)]
   for progress in 0..<(base.width-1):
+    # if progress mod 10 == 0 : echo progress
     let baseColor = base[progress+1,0]
     proc diff(color:int) : int = distance(baseColor,color.PietColor)
     proc update(pre,next:DPKey) =
@@ -143,20 +154,19 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
           # 普通
           if ord+1 < orders.len() and orders[ord+1].operation != Push:
             update(d(i,0,0,0),d(i,1,0,0)) # 次Pushがわかってるのに増やすことはできない
-          for f in 0..<here(i).len():
+          for f in 0..<min(here(i).len(),maxFund-1):
             update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
-          for f in 1..<here(i).len():
+          for f in 1..<min(here(i).len(),maxFund-1):
             update(d(i,0,0,f),d(i,1,0,f))
             update(d(i,0,0,f),d(i.getNextColor(Pop),1,0,f-1))
             update(d(i,0,0,f),d(i.getNextColor(Not),1,0,f))
             update(d(i,0,0,f),d(i.getNextColor(Dup),1,0,f+1))
-          for f in 2..<here(i).len():
+          for f in 2..<min(here(i).len(),maxFund-1):
             update(d(i,0,0,f),d(i.getNextColor(Add),1,0,f-1))
             update(d(i,0,0,f),d(i.getNextColor(Sub),1,0,f-1))
             update(d(i,0,0,f),d(i.getNextColor(Mul),1,0,f-1))
             update(d(i,0,0,f),d(i.getNextColor(Div),1,0,f-1))
             update(d(i,0,0,f),d(i.getNextColor(Mod),1,0,f-1))
-
   # TODO: 同じ色Nop(chunk)
   proc showPath(startKey:DPKey) =
     var key = startKey
@@ -188,6 +198,72 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
   for m in mins.sorted((a,b)=>dp[a].val - dp[b].val)[0..<min(3,mins.len())]:
     showPath(m)
 
+proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+  # ビームサーチでそれなりによいものを探す
+  checkStegano1D(orders,base)
+  #[
+  type Key = tuple[color,nop,ord,fund:int]
+  type Val = tuple[val:int,preKey:Key]
+  let chromMax = hueMax * lightMax
+  const maxFund = 10
+  const EPS = 1e12.int
+  const initVal :Val = (EPS,(0,0,0,0))
+  var searched = newSeqWith(chromMax + 1,newSeqWith(base.width,newSeqWith(base.width,newSeqWith(maxFund,initVal))))
+  var q = newHeapQueue[Val]() # tuple なので 前から順に小さい順に
+  # q.push((0,(0,0,0,0)))
+  block: # 最初は白以外
+    let color = base[0,0]
+    for i in 0..<chromMax:
+      q.push((distance(color,i.PietColor),(i,0,0,0)))
+  var loopIndex = 0
+  while true:
+    loopIndex += 1
+    let (val,here) = q.pop() # here:color,nop,ord,fund
+    if here.fund >= maxFund : continue
+    # WARN: 始めて到達したものになる
+    if searched[here.color][here.nop][here.ord][here.fund].val <= val: continue
+    searched[here.color][here.nop][here.ord][here.fund] = (val,here)
+    if here.ord >= orders.len() :
+      quit("OK" & $here & $val)
+    let progress = here.nop + here.ord
+    let order = orders[here.ord]
+    let baseColor = base[progress+1,0]
+    proc diff(color:int) : int = distance(baseColor,color.PietColor)
+    var pushList = newSeq[Val]()
+    proc push(nextColor,dNop,dOrd,dFund:int,lazy=true) =
+      let pushed = (val + diff(nextColor),(nextColor,here.nop + dNop,here.ord+dOrd,here.fund+dFund))
+      if lazy : pushList &= pushed
+      else : q.push(pushed)
+    # 命令を進めた
+    if here.fund == 0 :
+      push(here.color.getNextColor(order.operation),0,1,0,lazy=false)
+    # Nop
+    # (* -> 白)
+    push(chromMax,1,0,0)
+    if here.color == chromMax: # (白 -> *)
+      for i in 0..<chromMax: push(i,1,0,0)
+    # Fund
+    push(here.color.getNextColor(Push),1,0,1)
+    # if ord+1 < orders.len() and orders[ord+1].operation != Push:
+    #   update(d(i,0,0,0),d(i,1,0,0)) # 次Pushがわかってるのに増やすことはできない
+    if here.fund > 0:
+      push(here.color,1,0,0)
+      push(here.color.getNextColor(Pop),1,0,-1)
+      push(here.color.getNextColor(Not),1,0,0)
+      push(here.color.getNextColor(Dup),1,0,1)
+    if here.fund > 1:
+      push(here.color.getNextColor(Add),1,0,-1)
+      push(here.color.getNextColor(Sub),1,0,-1)
+      push(here.color.getNextColor(Mul),1,0,-1)
+      push(here.color.getNextColor(Div),1,0,-1)
+      push(here.color.getNextColor(Mod),1,0,-1)
+    # orderを進めるもの以外は上位3つでよいかな
+    for pushed in pushList.sorted((a,b)=> a.val - b.val): # [0..<min(10,pushList.len())]:
+      q.push(pushed)
+    ]#
+
+
+
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
   proc getValidOrders():seq[Order] =
@@ -213,7 +289,8 @@ proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
 
 if isMainModule:
   let orders = makeRandomOrders(20)
-  let baseImg = makeRandomPietColorMatrix(100,1)
-  let stegano = stegano1D(orders,baseImg)
+  let baseImg = makeRandomPietColorMatrix(50,1)
+  stegano1D(orders,baseImg)
+  quasiStegano1D(orders,baseImg)
   # baseImg.save()
   # stegano.save()
