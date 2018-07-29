@@ -252,12 +252,66 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             f.pushAs1D(hereColor.getNextColor(Div),0,-1)
             f.pushAs1D(hereColor.getNextColor(Mod),0,-1)
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+  block:
+    let front = fronts[^1]
+    echo "->{front[0].val}".fmt()
+    echo front[0].mat.toConsole()
+    echo base.toConsole()
+    echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
+    echo orders
+
+proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+  let chromMax = hueMax * lightMax
+  const maxFrontierNum = 100
+  # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
+  type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
+  var fronts = newSeqWith(1,newSeq[Val]())
+  block: # 最初は白以外
+    let color = base[0,0]
+    for i in 0..<chromMax:
+      var initMat = newMatrix[PietColor](base.width,base.height)
+      initMat.point((x,y) => -1)
+      initMat[0,0] = i.PietColor
+      fronts[0] &= (distance(color,i.PietColor),initMat,0,0,newDP(),newCC(),0)
+  for progress in 0..<(base.width-1):
+    var nexts = newSeqWith(min(fronts.len(),orders.len())+1,newSeq[Val]())
+    for ord in 0..<fronts.len():
+      let front = fronts[ord]
+      if ord == orders.len():
+        for f in front: nexts[ord] &= f
+        continue
+      let order = orders[ord]
+      # proc push(f:Val,nextColor,dx,dy,dOrd,dFund:int,dp:DP,cc:CC) =
+      #   var next : Val = (f.val,f.mat.deepCopy(),f.x + dx,f.y + dy,dp,cc,f.fund+dFund)
+      #   next.mat[next.x,next.y] = nextColor.PietColor
+      #   next.val += distance(nextColor.PietColor,base[next.x,next.y])
+      #   nexts[ord+dOrd] &= next
+      for f in front:
+        let hereColor = f.mat[f.x,f.y]
+        # 交差しうる(行けそうならOK)
+        # 黒ポチして曲がりうる
+        # [+1,DP] や [+3,DP] しうる
+        # 同じ色で方向転換しうる
+        # fund とか無理でしょ
+        # Piet08ですか ?
+        if f.fund == 0 and hereColor != chromMax: # 命令を進めた
+          let nextColor = hereColor.getNextColor(order.operation)
+          var next : Val = (f.val,f.mat.deepCopy(),f.x + 1,f.y,f.dp,f.cc,f.fund)
+          next.mat[next.x,next.y] = nextColor.PietColor
+          next.val += distance(nextColor.PietColor,base[next.x,next.y])
+          nexts[ord+1] &= next
+
+
+
+    fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+
   let front = fronts[^1]
   echo "->{front[0].val}".fmt()
-  echo front[0].mat.toConsole()
+  echo front[0].mat.toConsole() & "\n"
   echo base.toConsole()
-  echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
+  echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
   echo orders
+
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
@@ -283,9 +337,14 @@ proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
       result[x,y] = rand(maxColorNumber).PietColor
 
 if isMainModule:
-  let orders = makeRandomOrders(20)
-  let baseImg = makeRandomPietColorMatrix(64,1)
-  stegano1D(orders,baseImg)
-  quasiStegano1D(orders,baseImg)
+  if false:
+    let orders = makeRandomOrders(20)
+    let baseImg = makeRandomPietColorMatrix(64,1)
+    stegano1D(orders,baseImg)
+    quasiStegano1D(orders,baseImg)
+  block:
+    let orders = makeRandomOrders(5)
+    let baseImg = makeRandomPietColorMatrix(8,8)
+    quasiStegano2D(orders,baseImg)
   # baseImg.save()
   # stegano.save()
