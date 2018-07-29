@@ -132,27 +132,31 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) : Matrix[PietCo
           update(d(chromMax,0,0,f),d(i,1,0,f))
       # Fund
       for i in 0..<chromMax:
-        # # そんなわけないが任意の色に行けるとする場合(これはうまく行かなければおかしい)
-        # for j in 0..<chromMax:
-        #   for f in 0..<here(i).len():
-        #     update(d(i,0,0,f),d(j,1,0,f+1))
-        #   for f in 1..<here(i).len():
-        #     update(d(i,0,0,f),d(j,1,0,f-1))
-        # 普通
-        for f in 0..<here(i).len():
-          update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
-        for f in 1..<here(i).len():
-          update(d(i,0,0,f),d(i.getNextColor(Pop),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Not),1,0,f))
-          update(d(i,0,0,f),d(i.getNextColor(Dup),1,0,f+1))
-        for f in 2..<here(i).len():
-          update(d(i,0,0,f),d(i.getNextColor(Add),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Sub),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Mul),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Div),1,0,f-1))
-          update(d(i,0,0,f),d(i.getNextColor(Mod),1,0,f-1))
+        if false:
+          # そんなわけないが任意の色に行けるとする場合(これはめちゃくちゃうまく行かなければおかしい)
+          for j in 0..<chromMax:
+            for f in 0..<here(i).len():
+              update(d(i,0,0,f),d(j,1,0,f+1))
+            for f in 1..<here(i).len():
+              update(d(i,0,0,f),d(j,1,0,f-1))
+        else:
+          # 普通
+          if ord+1 < orders.len() and orders[ord+1].operation != Push:
+            update(d(i,0,0,0),d(i,1,0,0)) # 次Pushがわかってるのに増やすことはできない
+          for f in 0..<here(i).len():
+            update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
+          for f in 1..<here(i).len():
+            update(d(i,0,0,f),d(i,1,0,f))
+            update(d(i,0,0,f),d(i.getNextColor(Pop),1,0,f-1))
+            update(d(i,0,0,f),d(i.getNextColor(Not),1,0,f))
+            update(d(i,0,0,f),d(i.getNextColor(Dup),1,0,f+1))
+          for f in 2..<here(i).len():
+            update(d(i,0,0,f),d(i.getNextColor(Add),1,0,f-1))
+            update(d(i,0,0,f),d(i.getNextColor(Sub),1,0,f-1))
+            update(d(i,0,0,f),d(i.getNextColor(Mul),1,0,f-1))
+            update(d(i,0,0,f),d(i.getNextColor(Div),1,0,f-1))
+            update(d(i,0,0,f),d(i.getNextColor(Mod),1,0,f-1))
 
-  echo "updated"
   # TODO: 同じ色Nop(chunk)
   proc showPath(startKey:DPKey) =
     var key = startKey
