@@ -264,8 +264,14 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   let chromMax = hueMax * lightMax
   const maxFrontierNum = 100
-  # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
+  proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
+  proc updateMat(f:var Val,x,y:int,color:PietColor) =
+    if f.mat[x,y] == color: return
+    f.mat[x,y] = color
+    f.val += distance(color,base[x,y])
+  proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
+  # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   var fronts = newSeqWith(1,newSeq[Val]())
   block: # 最初は白以外
     let color = base[0,0]
@@ -284,28 +290,56 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       let order = orders[ord]
       for f in front:
         let hereColor = f.mat[f.x,f.y]
+        # 既に配置されたものは確定済み(それ以上(有彩色であれば)必ず広げない)と仮定
+        # => 隣接マスに同じ色があれば破綻というチェックができる
+        # 配置する時に
         # 次位置(by x,y,dp,cc)を確定させて行けるか確認
-        if f.fund == 0 and hereColor != chromMax: # 命令を進める
+        if f.fund == 0 and hereColor != chromMax:
+          # 命令を進める
           let nextColor = hereColor.getNextColor(order.operation)
-          # WARN: 1ブロック1マスと仮定して計算
-          var dp = f.dp
-          var cc = f.cc
-          for i in 0..<9:
-            let (dX,dY) = dp.getdXdY()
-            let (nX,nY) = (f.x + dX,f.y + dY)
-            # 範囲外
-            if nX < 0 or nY < 0 or nX >= base.width or nY >= base.height:
-              if i mod 2 == 0 : cc.toggle()
-              else: dp.toggle(1)
-              continue
-            # 既に確定済み
-            if f.mat[nX,nY] >= 0 : continue
-            var next : Val = (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
-            next.mat[next.x,next.y] = nextColor.PietColor
-            next.val += distance(nextColor.PietColor,base[next.x,next.y])
+          # WARN: 1ブロック1マスと仮定して計算 / 交差をしない / 白ではない
+          (proc = # 普通に命令を進める
+            var dp = f.dp
+            var cc = f.cc
+            for i in 0..<9:
+              let (dX,dY) = dp.getdXdY()
+              let (nX,nY) = (f.x + dX,f.y + dY)
+              if not isIn(nX,nY):
+                if i mod 2 == 0 : cc.toggle()
+                else: dp.toggle(1)
+                continue
+              if f.mat.isDecided(nX,nY) : return
+              var next : Val = (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
+              next.updateMat(next.x,next.y,nextColor.PietColor)
+              nexts[ord+1] &= next
+              return
+          )()
+          (proc = # 黒ポチターン
+            var dp = f.dp
+            var cc = f.cc
+            var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,dp,cc,f.fund)
+            block: #黒を配置
+              let (dX,dY) = dp.getdXdY()
+              let (bX,bY) = (f.x + dX,f.y + dY)
+              if not isIn(bX,bY): return
+              if next.mat.isDecided(bX,bY) and next.mat[bX,bY] != BlackNumber : return
+              next.updateMat(bX,bY,BlackNumber)
+            cc.toggle()
+            dp.toggle()
+            block: # 90度時計回り
+              let (dX,dY) = dp.getdXdY()
+              let (nX,nY) = (f.x + dX,f.y + dY)
+              if not isIn(nX,nY) : return
+              if next.mat.isDecided(nX,nY) : return
+              next.updateMat(nX,nY,nextColor.PietColor)
+              next.x = nX
+              next.y = nY
+              next.cc = cc
+              next.dp = dp
             nexts[ord+1] &= next
-            break
+          )()
         # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
+        # 新しく配置したやつが既に配置したものと被ることもある
         # 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
         # Nop (* -> 白)
         # (白 -> *)
@@ -314,12 +348,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         # そのうち : [+3,DP] fund 同色(上下左右引き伸ばし)
 
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
-
   let front = fronts[^1]
-  echo "->{front[0].val}".fmt()
-  echo front[0].mat.toConsole() & "\n"
+  for i in 0..<front.len():
+    echo "->{front[i].val}".fmt()
+    echo front[i].mat.toConsole() & "\n"
+    echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    break
   echo base.toConsole()
-  echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
   echo orders
 
 
