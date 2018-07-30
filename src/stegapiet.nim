@@ -4,18 +4,24 @@ import pietize
 import curse
 import makegraph
 
-# TODO: ランダムではないデータの場合結構勝手が違う気がする
-# 分岐なし/Gt=End版を完成させる
 # 状態数が多すぎて愚直なビームサーチでは程遠い
 # DP[color][nop][ord][fund] で progress = nop+ord 毎に回す
 # 探索的手法: 同じ [0..ord] 空間内に N個の [PietMat,先頭{Color,DP,CC,Fund}] を用意して
 #         : 次の [0..ord+1] 空間に飛ばす(N^2中の上位N個)
 # N = 100 でもそれなりによい結果
-# 二次元でも同等に出来るはずである
+#
+# 既に配置されたものは確定済み(それ以上(有彩色であれば)必ず広げない)と仮定
+# => 隣接マスに同じ色があれば破綻というチェックができる
+# 配置する時に
+# 次位置(by x,y,dp,cc)を確定させて行けるか確認
+# 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
+# 新しく配置したやつが既に配置したものと被ることもある
+# 黒ポチターン
+
+
+
 if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
-
-
 
 const chromMax = hueMax * lightMax
 
@@ -311,7 +317,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   echo base.toConsole(),"\n"
-  const maxFrontierNum = 100
+  const maxFrontierNum = 200
   const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
@@ -322,7 +328,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
-  proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor): seq[EmbedColorType] =
+  proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,onlyOne=false): seq[EmbedColorType] =
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
     # ただし,埋めれば埋めるほど当然損なので,最大でもmaxEmbedColorマスサイズにしかならない
     doAssert color < chromMax
@@ -335,6 +341,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       let (x,y,val,mat) = stack.pop()
       if not isIn(x,y) : continue
       if mat.isDecided(x,y) : continue
+      if (proc (): bool = # 隣接色チェック
+        for xy in [(0,1),(0,-1),(1,0),(-1,0)]:
+          let (dx,dy) = xy
+          let (nx,ny) = (x + dx,y + dy)
+          if not isIn(nx,ny) : continue
+          if startMat[nx,ny] == color : return true
+        return false
+        )() : continue
       var newMat = mat.deepCopy()
       newMat[x,y] = color
       # 確定している量が多いほどちょっと偉い
@@ -344,6 +358,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         if q.top().val <= next.val : continue
         discard q.pop()
       q.push(next)
+      if onlyOne : break # 一つだけほしいときはすぐにリタイア
       stack.push((x+1,y,newVal,newMat))
       stack.push((x-1,y,newVal,newMat))
       stack.push((x,y+1,newVal,newMat))
@@ -385,17 +400,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         for f in front: nexts[ord] &= f
         continue
       let order = orders[ord]
+      let nextIsPush = if ord + 1 < orders.len() : orders[ord+1].operation  == Push else: false
       for f in front:
         let hereColor = f.mat[f.x,f.y]
-        # 既に配置されたものは確定済み(それ以上(有彩色であれば)必ず広げない)と仮定
-        # => 隣接マスに同じ色があれば破綻というチェックができる
-        # 配置する時に
-        # 次位置(by x,y,dp,cc)を確定させて行けるか確認
         if f.fund == 0 and hereColor != chromMax:
           # 命令を進める
           let nextColor = hereColor.getNextColor(order.operation)
           let endPos = f.mat.getEightDirection(f.x,f.y)
-          # 交差をしない / 白ではない
+          # 白ではない
           (proc = # 普通に命令を進める
             var dp = f.dp
             var cc = f.cc
@@ -405,8 +417,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 if i mod 2 == 0 : cc.toggle()
                 else: dp.toggle(1)
                 continue
-              if f.mat.isDecided(nX,nY) : return
-              let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor)
+              if f.mat.isDecided(nX,nY) :
+                # 交差
+                if f.mat[nX,nY] != nextColor : return
+                # このまま進んでもいけそう
+                let (cX,cY) = f.mat.getEightDirection(nX,nY).getNextPos(dp,cc)
+                if not isIn(cX,cY) or f.mat.isDecided(cX,cY) : return
+                nexts[ord+1] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
+                return
+              # 次がPushなら Push 1 なので...
+              let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor,nextIsPush)
               for choise in choises:
                 nexts[ord+1] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund)
               return
@@ -417,17 +437,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,dp,cc,f.fund)
             let (bX,bY) = endPos.getNextPos(dp,cc)
             if not isIn(bX,bY): return
+            # 既に黒が置かれているならわざわざ置く必要がない
             if next.mat.isDecided(bX,bY) : return
             next.updateMat(bX,bY,BlackNumber)
             nexts[ord] &= next
           )()
         # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
-        # 新しく配置したやつが既に配置したものと被ることもある
-        # 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
         # Nop (* -> 白)
         # (白 -> *)
         # [+1,DP]
-        # 黒ポチターン
         # そのうち : [+3,DP] fund 同色(上下左右引き伸ばし)
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     let front = fronts[^1]
