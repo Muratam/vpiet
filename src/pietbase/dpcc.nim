@@ -8,6 +8,15 @@ proc newDP*():DP = DPRight
 proc toggle*(cc: var CC) = cc = (not cc.bool).CC
 proc toggle*(dp:var DP,n:int = 1) = dp = ((dp.int + n) mod 4).DP
 
+proc getdXdY*(dp:DP): tuple[x,y:int] =
+  return case dp:
+    of DPRight: (1,0)
+    of DPLeft: (-1,0)
+    of DPDown: (0,1)
+    of DPUp: (0,-1)
+
+
+
 iterator allCCDP*():(CC,DP) =
   yield (CCLeft ,DPRight)
   yield (CCRight,DPRight)

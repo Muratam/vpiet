@@ -5,6 +5,7 @@ import curse
 import makegraph
 import heapqueue
 
+# TODO: ランダムではないデータの場合結構勝手が違う気がする
 # 分岐なし/Gt=End版を完成させる
 # 状態数が多すぎて愚直なビームサーチでは程遠い
 # DP[color][nop][ord][fund] で progress = nop+ord 毎に回す
@@ -240,7 +241,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         else: # Fund(白では詰めない)
           f.pushAs1D(hereColor.getNextColor(Push),0,1)
           if ord+1 < orders.len() and orders[ord+1].operation != Push:
-            f.pushAs1D(hereColor,0,0)
+            f.pushAs1D(hereColor,0,0) # WARN: 次がPushというせいでNopなどもできない!!
           if f.fund > 0:
             f.pushAs1D(hereColor.getNextColor(Pop),0,-1)
             f.pushAs1D(hereColor.getNextColor(Not),0,0)
@@ -273,7 +274,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       initMat.point((x,y) => -1)
       initMat[0,0] = i.PietColor
       fronts[0] &= (distance(color,i.PietColor),initMat,0,0,newDP(),newCC(),0)
-  for progress in 0..<(base.width-1):
+  for progress in 0..<(base.width * base.height):
     var nexts = newSeqWith(min(fronts.len(),orders.len())+1,newSeq[Val]())
     for ord in 0..<fronts.len():
       let front = fronts[ord]
@@ -281,27 +282,36 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         for f in front: nexts[ord] &= f
         continue
       let order = orders[ord]
-      # proc push(f:Val,nextColor,dx,dy,dOrd,dFund:int,dp:DP,cc:CC) =
-      #   var next : Val = (f.val,f.mat.deepCopy(),f.x + dx,f.y + dy,dp,cc,f.fund+dFund)
-      #   next.mat[next.x,next.y] = nextColor.PietColor
-      #   next.val += distance(nextColor.PietColor,base[next.x,next.y])
-      #   nexts[ord+dOrd] &= next
       for f in front:
         let hereColor = f.mat[f.x,f.y]
-        # 交差しうる(行けそうならOK)
-        # 黒ポチして曲がりうる
-        # [+1,DP] や [+3,DP] しうる
-        # 同じ色で方向転換しうる
-        # fund とか無理でしょ
-        # Piet08ですか ?
-        if f.fund == 0 and hereColor != chromMax: # 命令を進めた
+        # 次位置(by x,y,dp,cc)を確定させて行けるか確認
+        if f.fund == 0 and hereColor != chromMax: # 命令を進める
           let nextColor = hereColor.getNextColor(order.operation)
-          var next : Val = (f.val,f.mat.deepCopy(),f.x + 1,f.y,f.dp,f.cc,f.fund)
-          next.mat[next.x,next.y] = nextColor.PietColor
-          next.val += distance(nextColor.PietColor,base[next.x,next.y])
-          nexts[ord+1] &= next
-
-
+          # WARN: 1ブロック1マスと仮定して計算
+          var dp = f.dp
+          var cc = f.cc
+          for i in 0..<9:
+            let (dX,dY) = dp.getdXdY()
+            let (nX,nY) = (f.x + dX,f.y + dY)
+            # 範囲外
+            if nX < 0 or nY < 0 or nX >= base.width or nY >= base.height:
+              if i mod 2 == 0 : cc.toggle()
+              else: dp.toggle(1)
+              continue
+            # 既に確定済み
+            if f.mat[nX,nY] >= 0 : continue
+            var next : Val = (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
+            next.mat[next.x,next.y] = nextColor.PietColor
+            next.val += distance(nextColor.PietColor,base[next.x,next.y])
+            nexts[ord+1] &= next
+            break
+        # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
+        # 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
+        # Nop (* -> 白)
+        # (白 -> *)
+        # [+1,DP]
+        # 黒ポチターン
+        # そのうち : [+3,DP] fund 同色(上下左右引き伸ばし)
 
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
 
@@ -342,8 +352,8 @@ if isMainModule:
     let baseImg = makeRandomPietColorMatrix(64,1)
     stegano1D(orders,baseImg)
     quasiStegano1D(orders,baseImg)
-  block:
-    let orders = makeRandomOrders(5)
+  if true:
+    let orders = makeRandomOrders(20)
     let baseImg = makeRandomPietColorMatrix(8,8)
     quasiStegano2D(orders,baseImg)
   # baseImg.save()
