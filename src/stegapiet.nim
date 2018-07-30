@@ -17,6 +17,7 @@ import makegraph
 # 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
 # 新しく配置したやつが既に配置したものと被ることもある
 # 黒ポチターン
+# Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
 
 
 
@@ -326,6 +327,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     f.val += distance(color,base[x,y]) - 1
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
+  proc checkAdjast(mat:Matrix[PietColor],color:PietColor,x,y:int) : bool =
+    for dxdy in [(0,1),(0,-1),(1,0),(-1,0)]:
+      let (dx,dy) = dxdy
+      let (nx,ny) = (x + dx,y + dy)
+      if not isIn(nx,ny) : continue
+      if mat[nx,ny] == color : return true
+    return false
+  proc checkNextIsNotDecided(mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC) : bool =
+    let (cX,cY) = mat.getEightDirection(x,y).getNextPos(dp,cc)
+    if not isIn(cX,cY) or mat.isDecided(cX,cY) : return false
+    return true
+
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
   proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,onlyOne=false): seq[EmbedColorType] =
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
@@ -340,14 +353,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       let (x,y,val,mat) = stack.pop()
       if not isIn(x,y) : continue
       if mat.isDecided(x,y) : continue
-      if (proc (): bool = # 隣接色チェック
-        for xy in [(0,1),(0,-1),(1,0),(-1,0)]:
-          let (dx,dy) = xy
-          let (nx,ny) = (x + dx,y + dy)
-          if not isIn(nx,ny) : continue
-          if startMat[nx,ny] == color : return true
-        return false
-        )() : continue
+      if startMat.checkAdjast(color,x,y) : continue
       var newMat = mat.deepCopy()
       newMat[x,y] = color
       # 確定している量が多いほどちょっと偉い
@@ -382,6 +388,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       pre = next
       result &= pre
   proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+    # 次に壁ではない場所にいけるなら ok
     var dp = startDP
     var cc = startCC
     for i in 0..<8:
@@ -425,8 +432,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             let (nX,nY) = endPos.getNextPos(dp,cc)
             if f.mat.isDecided(nX,nY) : # このままいけそうなら交差してみます
               if f.mat[nX,nY] != nextColor : return
-              let (cX,cY) = f.mat.getEightDirection(nX,nY).getNextPos(dp,cc)
-              if not isIn(cX,cY) or f.mat.isDecided(cX,cY) : return
+              if not f.mat.checkNextIsNotDecided(nX,nY,dp,cc): return
               nexts[ord+1] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
               return
             # 次がPushなら Push 1 なので 1マスだけなのに注意
@@ -444,13 +450,46 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             next.updateMat(bX,bY,BlackNumber)
             nexts[ord] &= next
           )()
-          (proc = # [+1,DP]
+          (proc = # 白を使うNop (WARN: 簡単のためにPiet08/KMCPietどちらでも動くような置き方しかしていません)
+            # x - - - y (-の数N * 次の色C)
+            let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
+            if not ok : return
+            let (dx,dy) = dp.getdXdY()
+            var (x,y) = endPos.getNextPos(dp,cc)
+            for i in 1..max(base.width,base.height):
+              let (cx,cy) = (x+dx*i,y+dy*i)
+              # 流石にはみ出したら終了
+              if not isIn(x,y) : break
+              if not isIn(cx,cy) : break
+              # 伸ばしている途中でいい感じになる可能性があるので continue
+              # 全て道中は白色にできないといけない
+              if (proc ():bool =
+                for j in 0..<i:
+                  let (jx,jy) = (x+dx*j,y+dy*j)
+                  if f.mat[jx,jy] != WhiteNumber and f.mat.isDecided(jx,jy) : return true
+                return false
+                )() : continue
+              proc toWhites(f:var Val) =
+                for j in 0..<i:
+                  let (jx,jy) = (x+dx*j,y+dy*j)
+                  f.updateMat(jx,jy,WhiteNumber)
+
+              if f.mat.isDecided(cx,cy):
+                # 交差するが行けるときはいく
+                if not f.mat.isChromatic(cx,cy) : continue
+                if not f.mat.checkNextIsNotDecided(cx,cy,dp,cc) : continue
+                var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
+                next.toWhites()
+                nexts[ord] &= next
+                continue
+              for c in 0..<chromMax:
+                if f.mat.checkAdjast(c.PietColor,cx,cy) : continue
+                var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
+                next.toWhites()
+                next.updateMat(cx,cy,c.PietColor)
+                nexts[ord] &= next
           )()
-        # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
-        # Nop (* -> 白)
-        # (白 -> *)
-        # [+1,DP]
-        # そのうち : [+3,DP] fund 同色(上下左右引き伸ばし)
+        # そのうち : fund :: [+n,{DP,CC}] (Pop感覚で使えるじゃん)
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     let front = fronts[^1]
     for i in 0..<front.len():
