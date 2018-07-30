@@ -3,7 +3,6 @@ import pietbase
 import pietize
 import curse
 import makegraph
-import heapqueue
 
 # TODO: ランダムではないデータの場合結構勝手が違う気がする
 # 分岐なし/Gt=End版を完成させる
@@ -311,25 +310,73 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+  echo base.toConsole(),"\n"
   const maxFrontierNum = 100
+  const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
   proc updateMat(f:var Val,x,y:int,color:PietColor) =
     if f.mat[x,y] == color: return
     f.mat[x,y] = color
-    f.val += distance(color,base[x,y])
+    f.val += distance(color,base[x,y]) - 1
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
-  # proc embedColor()
+  type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
+  proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor): seq[EmbedColorType] =
+    # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
+    # ただし,埋めれば埋めるほど当然損なので,最大でもmaxEmbedColorマスサイズにしかならない
+    doAssert color < chromMax
+    var stack = newStack[tuple[x,y,val:int,mat:Matrix[PietColor]]]()
+    # q.top()が一番雑魚になる
+    var q = newBinaryHeap[EmbedColorType](proc(x,y:EmbedColorType): int = y.val - x.val)
+    stack.push((startX,startY,startVal,startMat))
+    while not stack.isEmpty():
+      # WARN: 一筆書きできるようにしか配置できない！
+      let (x,y,val,mat) = stack.pop()
+      if not isIn(x,y) : continue
+      if mat.isDecided(x,y) : continue
+      var newMat = mat.deepCopy()
+      newMat[x,y] = color
+      # 確定している量が多いほどちょっと偉い
+      let newVal = val + distance(color,base[x,y]) - 1
+      let next : EmbedColorType = (newMat,newVal)
+      if q.len() > maxEmbedColor: # 多すぎるときは一番雑魚を省く
+        if q.top().val <= next.val : continue
+        discard q.pop()
+      q.push(next)
+      stack.push((x+1,y,newVal,newMat))
+      stack.push((x-1,y,newVal,newMat))
+      stack.push((x,y+1,newVal,newMat))
+      stack.push((x,y-1,newVal,newMat))
+    result = @[]
+    var pre : EmbedColorType
+    var isFirst = true
+    while q.len() > 0:
+      if isFirst :
+        pre = q.pop()
+        result &= pre
+        isFirst = false
+        continue
+      let next = q.pop()
+      let isSame = (proc ():bool =
+        for x in 0..<startMat.width:
+          for y in 0..<startMat.height:
+            if pre.mat[x,y] != next.mat[x,y] : return false
+        return true
+      )()
+      if isSame : continue
+      pre = next
+      result &= pre
   # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   var fronts = newSeqWith(1,newSeq[Val]())
   block: # 最初は白以外
-    let color = base[0,0]
     for i in 0..<chromMax:
       var initMat = newMatrix[PietColor](base.width,base.height)
       initMat.point((x,y) => -1)
-      initMat[0,0] = i.PietColor
-      fronts[0] &= (distance(color,i.PietColor),initMat,0,0,newDP(),newCC(),0)
+      let choises = initMat.embedColor(0,0,0,i.PietColor)
+      for choise in choises:
+        fronts[0] &= (choise.val,choise.mat,0,0,newDP(),newCC(),0)
+      fronts = fronts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
   for progress in 0..<(base.width * base.height):
     var nexts = newSeqWith(min(fronts.len(),orders.len())+1,newSeq[Val]())
     for ord in 0..<fronts.len():
@@ -359,9 +406,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 else: dp.toggle(1)
                 continue
               if f.mat.isDecided(nX,nY) : return
-              var next : Val = (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
-              next.updateMat(next.x,next.y,nextColor.PietColor)
-              nexts[ord+1] &= next
+              let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor)
+              for choise in choises:
+                nexts[ord+1] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund)
               return
           )()
           (proc = # 次の行き先に1マスだけ黒ポチー
@@ -382,17 +429,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         # [+1,DP]
         # 黒ポチターン
         # そのうち : [+3,DP] fund 同色(上下左右引き伸ばし)
-
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
-  let front = fronts[^1]
-  for i in 0..<front.len():
-    echo "->{front[i].val}".fmt()
-    echo front[i].mat.toConsole() & "\n"
-    echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
-    break
-  echo base.toConsole()
-  echo orders
-
+    let front = fronts[^1]
+    for i in 0..<front.len():
+      echo "->{front[i].val}".fmt()
+      echo front[i].mat.toConsole() & "\n"
+      echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+      echo base.toConsole()
+      echo orders
+      if i >= 0: break
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
@@ -417,6 +462,24 @@ proc makeRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
     for y in 0..<height:
       result[x,y] = rand(maxColorNumber).PietColor
 
+proc makeLocalRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
+  randomize()
+  result = newMatrix[PietColor](width,height)
+  const same = 5
+  for x in 0..<width:
+    for y in 0..<height:
+      result[x,y] = rand(maxColorNumber).PietColor
+      if rand(1) == 0:
+        if rand(10) > same and x > 0:
+          result[x,y] = result[x-1,y]
+        if rand(10) > same and y > 0:
+          result[x,y] = result[x,y-1]
+      else:
+        if rand(10) > same and y > 0:
+          result[x,y] = result[x,y-1]
+        if rand(10) > same and x > 0:
+          result[x,y] = result[x-1,y]
+
 if isMainModule:
   if false:
     let orders = makeRandomOrders(20)
@@ -425,7 +488,7 @@ if isMainModule:
     quasiStegano1D(orders,baseImg)
   if true:
     let orders = makeRandomOrders(20)
-    let baseImg = makeRandomPietColorMatrix(8,8)
+    let baseImg = makeLocalRandomPietColorMatrix(8,8)
     quasiStegano2D(orders,baseImg)
   # baseImg.save()
   # stegano.save()
