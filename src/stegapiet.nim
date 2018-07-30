@@ -317,7 +317,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   echo base.toConsole(),"\n"
-  const maxFrontierNum = 200
+  const maxFrontierNum = 400
   const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
@@ -418,78 +418,89 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         for f in front: nexts[ord] &= f
         continue
       let order = orders[ord]
-      let nextIsPush = if ord + 1 < orders.len() : orders[ord+1].operation  == Push else: false
       for f in front:
         let hereColor = f.mat[f.x,f.y]
-        if f.fund == 0 and hereColor != chromMax:
-          # 命令を進める
-          let nextColor = hereColor.getNextColor(order.operation)
-          let endPos = f.mat.getEightDirection(f.x,f.y)
-          # 白ではない
-          (proc = # 普通に命令を進める
-            let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
-            if not ok : return
-            let (nX,nY) = endPos.getNextPos(dp,cc)
-            if f.mat.isDecided(nX,nY) : # このままいけそうなら交差してみます
-              if f.mat[nX,nY] != nextColor : return
-              if not f.mat.checkNextIsNotDecided(nX,nY,dp,cc): return
-              nexts[ord+1] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
-              return
-            # 次がPushなら Push 1 なので 1マスだけなのに注意
-            let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor,nextIsPush)
-            for choise in choises:
-              nexts[ord+1] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund)
+        if hereColor >= chromMax : continue # 簡単のために白は経由しない
+        let endPos = f.mat.getEightDirection(f.x,f.y)
+        proc decide(dOrd:int,dFund:int,color:PietColor,onlyOne:bool) =
+          let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
+          if not ok : return
+          let (nX,nY) = endPos.getNextPos(dp,cc)
+          if f.mat.isDecided(nX,nY) : # このままいけそうなら交差してみます
+            if f.mat[nX,nY] != color : return
+            if not f.mat.checkNextIsNotDecided(nX,nY,dp,cc): return
+            nexts[ord+dOrd] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund + dFund)
             return
-          )()
-          (proc = # 次の行き先に1マスだけ黒ポチー
-            let (bX,bY) = endPos.getNextPos(f.dp,f.cc)
-            if not isIn(bX,bY): return
-            # 既に黒が置かれているならわざわざ置く必要がない
-            if f.mat.isDecided(bX,bY) : return
-            var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,f.dp,f.cc,f.fund)
-            next.updateMat(bX,bY,BlackNumber)
-            nexts[ord] &= next
-          )()
-          (proc = # 白を使うNop (WARN: 簡単のためにPiet08/KMCPietどちらでも動くような置き方しかしていません)
-            # x - - - y (-の数N * 次の色C)
-            let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
-            if not ok : return
-            let (dx,dy) = dp.getdXdY()
-            var (x,y) = endPos.getNextPos(dp,cc)
-            for i in 1..max(base.width,base.height):
-              let (cx,cy) = (x+dx*i,y+dy*i)
-              # 流石にはみ出したら終了
-              if not isIn(x,y) : break
-              if not isIn(cx,cy) : break
-              # 伸ばしている途中でいい感じになる可能性があるので continue
-              # 全て道中は白色にできないといけない
-              if (proc ():bool =
-                for j in 0..<i:
-                  let (jx,jy) = (x+dx*j,y+dy*j)
-                  if f.mat[jx,jy] != WhiteNumber and f.mat.isDecided(jx,jy) : return true
-                return false
-                )() : continue
-              proc toWhites(f:var Val) =
-                for j in 0..<i:
-                  let (jx,jy) = (x+dx*j,y+dy*j)
-                  f.updateMat(jx,jy,WhiteNumber)
+          # 次がPushなら Push 1 なので 1マスだけなのに注意
+          let choises = f.mat.embedColor(f.val,nX,nY,color,onlyOne)
+          for choise in choises:
+            nexts[ord+dOrd] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund + dFund)
+          return
 
-              if f.mat.isDecided(cx,cy):
-                # 交差するが行けるときはいく
-                if not f.mat.isChromatic(cx,cy) : continue
-                if not f.mat.checkNextIsNotDecided(cx,cy,dp,cc) : continue
-                var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
-                next.toWhites()
-                nexts[ord] &= next
-                continue
-              for c in 0..<chromMax:
-                if f.mat.checkAdjast(c.PietColor,cx,cy) : continue
-                var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
-                next.toWhites()
-                next.updateMat(cx,cy,c.PietColor)
-                nexts[ord] &= next
-          )()
-        # そのうち : fund :: [+n,{DP,CC}] (Pop感覚で使えるじゃん)
+        if f.fund == 0: # 命令を進められるのは fund == 0 のみ
+          let nextIsPush = if ord + 1 < orders.len() : orders[ord+1].operation  == Push else: false
+          let nextColor = hereColor.getNextColor(order.operation)
+          decide(1,0,nextColor.PietColor,nextIsPush)
+        (proc = # 次の行き先に1マスだけ黒ポチー
+          let (bX,bY) = endPos.getNextPos(f.dp,f.cc)
+          if not isIn(bX,bY): return
+          # 既に黒が置かれているならわざわざ置く必要がない
+          if f.mat.isDecided(bX,bY) : return
+          var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,f.dp,f.cc,f.fund)
+          next.updateMat(bX,bY,BlackNumber)
+          nexts[ord] &= next
+        )()
+        (proc = # 白を使うNop (WARN: 簡単のためにPiet08/KMCPietどちらでも動くような置き方しかしていません)
+          # x - - - y (-の数N * 次の色C)
+          let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
+          if not ok : return
+          let (dx,dy) = dp.getdXdY()
+          var (x,y) = endPos.getNextPos(dp,cc)
+          for i in 1..max(base.width,base.height):
+            let (cx,cy) = (x+dx*i,y+dy*i)
+            # 流石にはみ出したら終了
+            if not isIn(x,y) : break
+            if not isIn(cx,cy) : break
+            # 伸ばしている途中でいい感じになる可能性があるので continue
+            # 全て道中は白色にできないといけない
+            if (proc ():bool =
+              for j in 0..<i:
+                let (jx,jy) = (x+dx*j,y+dy*j)
+                if f.mat[jx,jy] != WhiteNumber and f.mat.isDecided(jx,jy) : return true
+              return false
+              )() : continue
+            proc toWhites(f:var Val) =
+              for j in 0..<i:
+                let (jx,jy) = (x+dx*j,y+dy*j)
+                f.updateMat(jx,jy,WhiteNumber)
+
+            if f.mat.isDecided(cx,cy):
+              # 交差するが行けるときはいく
+              if not f.mat.isChromatic(cx,cy) : continue
+              if not f.mat.checkNextIsNotDecided(cx,cy,dp,cc) : continue
+              var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
+              next.toWhites()
+              nexts[ord] &= next
+              continue
+            for c in 0..<chromMax:
+              if f.mat.checkAdjast(c.PietColor,cx,cy) : continue
+              var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
+              next.toWhites()
+              next.updateMat(cx,cy,c.PietColor)
+              nexts[ord] &= next
+        )()
+        # fund
+        decide(0,1,hereColor.getNextColor(Push).PietColor,false)
+        if f.fund > 0 : # WARN: DP,CCとして捨てることも可能(一緒に回す?(解析が面倒(DP/CCの数字がなにかかなり不明)なので気をまだやっていない))
+          decide(0,-1,hereColor.getNextColor(Pop).PietColor,false)
+          decide(0,0,hereColor.getNextColor(Not).PietColor,false)
+          decide(0,1,hereColor.getNextColor(Dup).PietColor,false)
+        if f.fund > 1:
+          decide(0,-1,hereColor.getNextColor(Add).PietColor,false)
+          decide(0,-1,hereColor.getNextColor(Sub).PietColor,false)
+          decide(0,-1,hereColor.getNextColor(Mul).PietColor,false)
+          decide(0,-1,hereColor.getNextColor(Div).PietColor,false)
+          decide(0,-1,hereColor.getNextColor(Mod).PietColor,false)
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     let front = fronts[^1]
     for i in 0..<front.len():
@@ -548,8 +559,8 @@ if isMainModule:
     stegano1D(orders,baseImg)
     quasiStegano1D(orders,baseImg)
   if true:
-    let orders = makeRandomOrders(20)
-    let baseImg = makeLocalRandomPietColorMatrix(8,8)
+    let orders = makeRandomOrders(30)
+    let baseImg = makeLocalRandomPietColorMatrix(10,10)
     quasiStegano2D(orders,baseImg)
   # baseImg.save()
   # stegano.save()
