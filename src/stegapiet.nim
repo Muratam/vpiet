@@ -73,7 +73,6 @@ proc getNextPos(endPos:EightDirection[Pos],dp:DP,cc:CC) : tuple[x,y:int] =
   let (dX,dY) = dp.getdXdY()
   return (x + dX,y + dY)
 
-
 proc toConsole(pietMap:Matrix[PietColor]): string =
   result = ""
   for y in 0..<pietMap.height:
@@ -382,6 +381,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       if isSame : continue
       pre = next
       result &= pre
+  proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+    var dp = startDP
+    var cc = startCC
+    for i in 0..<8:
+      let (nX,nY) = eightDirection.getNextPos(dp,cc)
+      if not isIn(nX,nY) or mat[nX,nY] == BlackNumber:
+        if i mod 2 == 0 : cc.toggle()
+        else: dp.toggle(1)
+        continue
+      return (true,dp,cc)
+    return (false,dp,cc)
+
   # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   var fronts = newSeqWith(1,newSeq[Val]())
   block: # 最初は白以外
@@ -409,38 +420,31 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
           let endPos = f.mat.getEightDirection(f.x,f.y)
           # 白ではない
           (proc = # 普通に命令を進める
-            var dp = f.dp
-            var cc = f.cc
-            for i in 0..<9:
-              let (nX,nY) = endPos.getNextPos(dp,cc)
-              if not isIn(nX,nY) or f.mat[nX,nY] == BlackNumber:
-                if i mod 2 == 0 : cc.toggle()
-                else: dp.toggle(1)
-                continue
-              if f.mat.isDecided(nX,nY) :
-                # 交差
-                if f.mat[nX,nY] != nextColor : return
-                # このまま進んでもいけそう
-                let (cX,cY) = f.mat.getEightDirection(nX,nY).getNextPos(dp,cc)
-                if not isIn(cX,cY) or f.mat.isDecided(cX,cY) : return
-                nexts[ord+1] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
-                return
-              # 次がPushなら Push 1 なので...
-              let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor,nextIsPush)
-              for choise in choises:
-                nexts[ord+1] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund)
+            let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
+            if not ok : return
+            let (nX,nY) = endPos.getNextPos(dp,cc)
+            if f.mat.isDecided(nX,nY) : # このままいけそうなら交差してみます
+              if f.mat[nX,nY] != nextColor : return
+              let (cX,cY) = f.mat.getEightDirection(nX,nY).getNextPos(dp,cc)
+              if not isIn(cX,cY) or f.mat.isDecided(cX,cY) : return
+              nexts[ord+1] &= (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund)
               return
+            # 次がPushなら Push 1 なので 1マスだけなのに注意
+            let choises = f.mat.embedColor(f.val,nX,nY,nextColor.PietColor,nextIsPush)
+            for choise in choises:
+              nexts[ord+1] &= (choise.val,choise.mat,nX,nY,dp,cc,f.fund)
+            return
           )()
           (proc = # 次の行き先に1マスだけ黒ポチー
-            var dp = f.dp
-            var cc = f.cc
-            var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,dp,cc,f.fund)
-            let (bX,bY) = endPos.getNextPos(dp,cc)
+            let (bX,bY) = endPos.getNextPos(f.dp,f.cc)
             if not isIn(bX,bY): return
             # 既に黒が置かれているならわざわざ置く必要がない
-            if next.mat.isDecided(bX,bY) : return
+            if f.mat.isDecided(bX,bY) : return
+            var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,f.dp,f.cc,f.fund)
             next.updateMat(bX,bY,BlackNumber)
             nexts[ord] &= next
+          )()
+          (proc = # [+1,DP]
           )()
         # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
         # Nop (* -> 白)
