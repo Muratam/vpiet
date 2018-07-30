@@ -13,10 +13,61 @@ import heapqueue
 #         : 次の [0..ord+1] 空間に飛ばす(N^2中の上位N個)
 # N = 100 でもそれなりによい結果
 # 二次元でも同等に出来るはずである
-
-
 if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
+
+
+
+const chromMax = hueMax * lightMax
+
+proc getEightDirection(self: Matrix[PietColor],x,y:int) : EightDirection[Pos] =
+  # 現在位置から次の8方向を探索して返す
+  let color = self[x,y]
+  doAssert color >= 0 and color < chromMax
+  var searched = newMatrix[bool](self.width,self.height)
+  searched.point((x,y)=>false)
+  var stack = newStack[Pos]()
+  let here = (x.int32,y.int32)
+  stack.push(here)
+  var endPos : EightDirection[Pos]= (here,here,here,here,here,here,here,here)
+  proc updateEndPos(x,y:int32) =
+    if y < endPos.upR.y : endPos.upR = (x,y)
+    elif y == endPos.upR.y and x > endPos.upR.x : endPos.upR = (x,y)
+    if y < endPos.upL.y : endPos.upL = (x,y)
+    elif y == endPos.upL.y and x < endPos.upL.x : endPos.upL = (x,y)
+    if y > endPos.downR.y : endPos.downR = (x,y)
+    elif y == endPos.downR.y and x < endPos.downR.x : endPos.downR = (x,y)
+    if y > endPos.downL.y : endPos.downL = (x,y)
+    elif y == endPos.downL.y and x > endPos.downL.x : endPos.downL = (x,y)
+    if x < endPos.leftR.x : endPos.leftR = (x,y)
+    elif x == endPos.leftR.x and y < endPos.leftR.y : endPos.leftR = (x,y)
+    if x < endPos.leftL.x : endPos.leftL = (x,y)
+    elif x == endPos.leftL.x and y > endPos.leftL.y : endPos.leftL = (x,y)
+    if x > endPos.rightR.x : endPos.rightR = (x,y)
+    elif x == endPos.rightR.x and y > endPos.rightR.y : endPos.rightR = (x,y)
+    if x > endPos.rightL.x : endPos.rightL = (x,y)
+    elif x == endPos.rightL.x and y < endPos.rightL.y : endPos.rightL = (x,y)
+  template searchNext(x2,y2:int32,op:untyped): untyped =
+    block:
+      let x {.inject.} = x2
+      let y {.inject.} = y2
+      if op and not searched[x,y] and self[x,y] == color:
+        searched[x,y] = true
+        stack.push((x,y))
+  while not stack.isEmpty():
+    let (x,y) = stack.pop()
+    updateEndPos(x,y)
+    searchNext(x-1,y  ,x >= 0)
+    searchNext(x+1,y  ,x < self.width)
+    searchNext(x  ,y-1,y >= 0)
+    searchNext(x  ,y+1,y < self.height)
+  return endPos
+
+proc getNextPos(endPos:EightDirection[Pos],dp:DP,cc:CC) : tuple[x,y:int] =
+  let (x,y) = endPos[cc,dp]
+  let (dX,dY) = dp.getdXdY()
+  return (x + dX,y + dY)
+
 
 proc toConsole(pietMap:Matrix[PietColor]): string =
   result = ""
@@ -89,7 +140,6 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   checkStegano1D(orders,base)
   # result = newMatrix[PietColor](base.width,1)
   # https://photos.google.com/photo/AF1QipMlNFgMkP-_2AtsRZcYbPV3xkBjU0q8bKxql9p3?hl=ja
-  let chromMax = hueMax * lightMax
   const EPS = 1e12.int
   # 有彩色 + 白 (黒は使用しない)
   type DPKey = tuple[color,nop,ord,fund:int]  # [color][Nop][Order][Fund]
@@ -203,7 +253,6 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   # ビームサーチでそれなりによいものを探す
   checkStegano1D(orders,base)
-  let chromMax = hueMax * lightMax
   const maxFrontierNum = 100
   # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
@@ -262,7 +311,6 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
-  let chromMax = hueMax * lightMax
   const maxFrontierNum = 100
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
@@ -272,7 +320,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     f.val += distance(color,base[x,y])
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
-
+  # proc embedColor()
   # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   var fronts = newSeqWith(1,newSeq[Val]())
   block: # 最初は白以外
@@ -299,13 +347,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         if f.fund == 0 and hereColor != chromMax:
           # 命令を進める
           let nextColor = hereColor.getNextColor(order.operation)
-          # WARN: 1ブロック1マスと仮定して計算 / 交差をしない / 白ではない
+          let endPos = f.mat.getEightDirection(f.x,f.y)
+          # 交差をしない / 白ではない
           (proc = # 普通に命令を進める
             var dp = f.dp
             var cc = f.cc
             for i in 0..<9:
-              let (dX,dY) = dp.getdXdY()
-              let (nX,nY) = (f.x + dX,f.y + dY)
+              let (nX,nY) = endPos.getNextPos(dp,cc)
               if not isIn(nX,nY) or f.mat[nX,nY] == BlackNumber:
                 if i mod 2 == 0 : cc.toggle()
                 else: dp.toggle(1)
@@ -320,8 +368,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             var dp = f.dp
             var cc = f.cc
             var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,dp,cc,f.fund)
-            let (dX,dY) = dp.getdXdY()
-            let (bX,bY) = (f.x + dX,f.y + dY)
+            let (bX,bY) = endPos.getNextPos(dp,cc)
             if not isIn(bX,bY): return
             if next.mat.isDecided(bX,bY) : return
             next.updateMat(bX,bY,BlackNumber)
