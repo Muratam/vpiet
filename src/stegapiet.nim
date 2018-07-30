@@ -271,6 +271,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     f.mat[x,y] = color
     f.val += distance(color,base[x,y])
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
+  proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
+
   # index == ord | N個の [PietMat,先頭{Color,DP,CC,Fund}]
   var fronts = newSeqWith(1,newSeq[Val]())
   block: # 最初は白以外
@@ -304,7 +306,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
             for i in 0..<9:
               let (dX,dY) = dp.getdXdY()
               let (nX,nY) = (f.x + dX,f.y + dY)
-              if not isIn(nX,nY):
+              if not isIn(nX,nY) or f.mat[nX,nY] == BlackNumber:
                 if i mod 2 == 0 : cc.toggle()
                 else: dp.toggle(1)
                 continue
@@ -314,29 +316,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
               nexts[ord+1] &= next
               return
           )()
-          (proc = # 黒ポチターン
+          (proc = # 次の行き先に1マスだけ黒ポチー
             var dp = f.dp
             var cc = f.cc
             var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,dp,cc,f.fund)
-            block: #黒を配置
-              let (dX,dY) = dp.getdXdY()
-              let (bX,bY) = (f.x + dX,f.y + dY)
-              if not isIn(bX,bY): return
-              if next.mat.isDecided(bX,bY) and next.mat[bX,bY] != BlackNumber : return
-              next.updateMat(bX,bY,BlackNumber)
-            cc.toggle()
-            dp.toggle()
-            block: # 90度時計回り
-              let (dX,dY) = dp.getdXdY()
-              let (nX,nY) = (f.x + dX,f.y + dY)
-              if not isIn(nX,nY) : return
-              if next.mat.isDecided(nX,nY) : return
-              next.updateMat(nX,nY,nextColor.PietColor)
-              next.x = nX
-              next.y = nY
-              next.cc = cc
-              next.dp = dp
-            nexts[ord+1] &= next
+            let (dX,dY) = dp.getdXdY()
+            let (bX,bY) = (f.x + dX,f.y + dY)
+            if not isIn(bX,bY): return
+            if next.mat.isDecided(bX,bY) : return
+            next.updateMat(bX,bY,BlackNumber)
+            nexts[ord] &= next
           )()
         # Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
         # 新しく配置したやつが既に配置したものと被ることもある
