@@ -1,8 +1,7 @@
 import common
 import terminal,termios,posix
-export terminal,termios,posix
+export terminal,termios
 from libs.ncurses.ncurses as nc import nil
-
 # CUIでごにょごにょする際のラッパーモジュール
 
 proc timeout(t:int): void {.cdecl, discardable, importc: "timeout", dynlib: nc.libncurses.}

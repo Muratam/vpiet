@@ -72,7 +72,7 @@ proc `[]`*[T](self: Matrix[T],x,y:Natural): T =
   return self.data[x + self.width * y]
 proc `[]`*[T](self: var Matrix[T],x,y:Natural): var T =
   return self.data[x + self.width * y]
-proc `$`*[T](self:var Matrix[T]) :string=
+proc `$`*[T](self:Matrix[T]) :string=
   result = ""
   for y in 0..<self.height:
     for x in 0..<self.width:

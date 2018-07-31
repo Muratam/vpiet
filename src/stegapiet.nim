@@ -1,26 +1,17 @@
 import common
 import pietbase
 import pietize
-import curse except Stack
+import curse
 import makegraph
-
-# 状態数が多すぎて愚直なビームサーチでは程遠い
-# DP[color][nop][ord][fund] で progress = nop+ord 毎に回す
-# 探索的手法: 同じ [0..ord] 空間内に N個の [PietMat,先頭{Color,DP,CC,Fund}] を用意して
-#         : 次の [0..ord+1] 空間に飛ばす(N^2中の上位N個)
-# N = 100 でもそれなりによい結果
-#
-# 既に配置されたものは確定済み(それ以上(有彩色であれば)必ず広げない)と仮定
-# => 隣接マスに同じ色があれば破綻というチェックができる
-# 配置する時に
-# 次位置(by x,y,dp,cc)を確定させて行けるか確認
-# 交差しうる(交差するときは引き伸ばしはしない+ループに入らなければOKというルールにすればOK)
-# 新しく配置したやつが既に配置したものと被ることもある
-# 黒ポチターン
-# Piet08ですか ?(とりあえず白の先を{黒,壁}にしなければOK)
-
-
-
+import sets
+# TODO: 高速化
+#   deepcopyをプールしておく?
+#   embed 関数をメモ化して頑張る
+#   白埋めのやつ
+# 一筆書き解除
+# 空白部分を埋める
+# 色差関数を整理(色相が同じものは嬉しい/光度が同じものは嬉しい...)
+# 終了を埋め込む
 if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
 
@@ -310,8 +301,8 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   echo base.toConsole(),"\n"
-  const maxFrontierNum = 500
-  const maxEmbedColor = 20
+  const maxFrontierNum = 300
+  const maxEmbedColor = 10
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:Stack[int]]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
   proc update(mat:var Matrix[PietColor],val:var int,x,y:int,color:PietColor) =
@@ -340,9 +331,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     # q.top()が一番雑魚になる
     var q = newBinaryHeap[EmbedColorType](proc(x,y:EmbedColorType): int = y.val - x.val)
     stack.push((startX,startY,startVal,startMat))
+    var table = initSet[string]()
     while not stack.isEmpty():
       # WARN: 一筆書きできるようにしか配置できない！
-      # WARN: 同率のときに一個飛ばしだが同じものがあるかも...
       let (x,y,val,mat) = stack.pop()
       if not isIn(x,y) : continue
       if mat.isDecided(x,y) : continue
@@ -353,32 +344,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       let next : EmbedColorType = (newMat,newVal)
       if q.len() > maxEmbedColor: # 多すぎるときは一番雑魚を省く
         if q.top().val <= next.val : continue
-        discard q.pop()
+        if $q.top().mat in table : continue
+        let dis = q.pop()
+        table.excl($dis.mat)
       q.push(next)
+      table.incl($next.mat)
       if onlyOne : break # 一つだけほしいときはすぐにリタイア
       stack.push((x+1,y,newVal,newMat))
       stack.push((x-1,y,newVal,newMat))
       stack.push((x,y+1,newVal,newMat))
       stack.push((x,y-1,newVal,newMat))
     result = @[]
-    var pre : EmbedColorType
-    var isFirst = true
-    while q.len() > 0:
-      if isFirst :
-        pre = q.pop()
-        result &= pre
-        isFirst = false
-        continue
-      let next = q.pop()
-      let isSame = (proc ():bool =
-        for x in 0..<startMat.width:
-          for y in 0..<startMat.height:
-            if pre.mat[x,y] != next.mat[x,y] : return false
-        return true
-      )()
-      if isSame : continue
-      pre = next
-      result &= pre
+    while q.len() > 0: result &= q.pop()
   proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
     # 次に壁ではない場所にいけるなら ok
     var dp = startDP
@@ -404,6 +381,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       fronts = fronts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
   for progress in 0..<(base.width * base.height):
     var nexts = newSeqWith(min(fronts.len(),orders.len())+1,newSeq[Val]())
+    # if fronts.len() > 1 and fronts[0..^2].allIt(it.len() == 0) : break
+    # echo fronts.mapIt(it.len())
     for ord in 0..<fronts.len():
       let front = fronts[ord]
       if ord == orders.len():
@@ -446,8 +425,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
           next.mat.update(next.val,bX,bY,BlackNumber)
           nexts[ord] &= next
         )()
-        (proc = # 白を使うNop (WARN: 簡単のためにPiet08/KMCPietどちらでも動くような置き方しかしていません)
-          # x - - | # 壁で反射みたいなこともできるよねー
+        (proc = # 白を使うNop
+          # 現仕様ではPiet08/KMCPietどちらでも動く！
+          # WARN: x - - | # 壁で反射みたいなこともできるよねー
           # x - - - y (-の数N * 次の色C)
           let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
           if not ok : return
@@ -479,12 +459,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
               next.toWhites()
               nexts[ord] &= next
               continue
+            # 白の次にマス
+            var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
+            next.toWhites()
             for c in 0..<chromMax:
-              if f.mat.checkAdjast(c.PietColor,cx,cy) : continue
-              var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund.deepCopy())
-              next.toWhites()
-              next.mat.update(next.val,cx,cy,c.PietColor)
-              nexts[ord] &= next
+              # next.mat.update(next.val,cx,cy,c.PietColor)
+              # nexts[ord] &= next
+              if next.mat.checkAdjast(c.PietColor,cx,cy) : continue
+              let choises = next.mat.embedColor(next.val,cx,cy,c.PietColor)
+              for choise in choises:
+                nexts[ord] &= (choise.val,choise.mat,cx,cy,dp,cc,next.fund.deepCopy())
         )()
         # fund
         decide(0,hereColor.getNextColor(Push).PietColor,false,
@@ -497,13 +481,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 discard v.fund.pop()
                 return true)
           decide(0,hereColor.getNextColor(Switch).PietColor,false,
-          proc(v:var Val) :bool=
-            if v.fund.pop() mod 2 == 1 : v.cc.toggle()
-            return true)
-          decide(0,hereColor.getNextColor(Switch).PietColor,false,
-          proc(v:var Val) :bool=
-            v.dp.toggle(v.fund.pop())
-            return true)
+            proc(v:var Val) :bool=
+              if v.fund.pop() mod 2 == 1 : v.cc.toggle()
+              return true)
+          decide(0,hereColor.getNextColor(Pointer).PietColor,false,
+            proc(v:var Val) :bool=
+              v.dp.toggle(v.fund.pop())
+              return true)
           decide(0,hereColor.getNextColor(Not).PietColor,false,
               proc(v:var Val) :bool=
                 v.fund.push(if v.fund.pop() == 0: 1 else: 0)
@@ -545,10 +529,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 if top == 0 : return false
                 v.fund.push(next mod top)
                 return true)
+    echo nexts.mapIt(it.len())
+    echo nexts.mapIt(it.mapIt(it.val)).mapIt([it.max(),it.min()])
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     let front = fronts[^1]
     for j in 0..<front.len():
-      let i = 10 - j
+      let i = 0 - j
       echo front[i].mat.toConsole(),front[i].val ,"\n"
       if i == 0 :
         echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
