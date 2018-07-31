@@ -4,13 +4,7 @@ import pietize
 import curse
 import makegraph
 import sets
-# TODO: 高速化
-#   deepcopyをプールしておく?
-#   embed 関数をメモ化して頑張る
-#   白埋めのやつ
-# 一筆書き解除
-# 空白部分を埋める
-# 色差関数を整理(色相が同じものは嬉しい/光度が同じものは嬉しい...)
+# 一筆書き制限の解除
 # 終了を埋め込む
 if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
@@ -85,7 +79,7 @@ proc toConsole(pietMap:Matrix[PietColor]): string =
           getColor6(r.to6,g.to6,b.to6).toBackColor() & ' '
       result &=  c
     if y != pietMap.height - 1 : result &= "\n"
-  result &= endAll
+  result &= endAll & "\n"
 
 
 proc `$`(orders:seq[OrderAndArgs]):string =
@@ -106,7 +100,7 @@ proc distance(a,b:PietColor) : int =
   # return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
   # wikipediaの近似式
   proc sq(x:uint8):int = x.int * x.int
-  let rr = 0.0 # (ar.int + br.int) / 512
+  let rr = (ar.int + br.int) / 512
   let dr = sq(ar-br).float
   let dg = sq(ag-bg).float
   let db = sq(ab-bb).float
@@ -299,9 +293,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
     echo orders
 
-proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
-  echo base.toConsole(),"\n"
-  const maxFrontierNum = 500
+proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
   const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:Stack[int]]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
@@ -326,12 +318,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     let (cX,cY) = mat.getInfo(x,y).endPos.getNextPos(dp,cc)
     if not isIn(cX,cY) or mat.isDecided(cX,cY) : return false
     return true
-  var stopWatch = newStopWatch()
-  var lstopWatch = newStopWatch()
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
   var stack = newStack[tuple[x,y,val:int,mat:Matrix[PietColor]]]() # プーリング
   proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,allowScore:int,onlyOne=false): seq[EmbedColorType] =
-    stopWatch.start()
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
     # ただし,埋めれば埋めるほど当然損なので,最大でもmaxEmbedColorマスサイズにしかならない
     doAssert color < chromMax
@@ -364,7 +353,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       checkAndPush(x-1,y,newVal,newMat)
       checkAndPush(x,y+1,newVal,newMat)
       checkAndPush(x,y-1,newVal,newMat)
-    stopWatch.stop()
     result = @[]
     while q.len() > 0: result &= q.pop()
   proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
@@ -380,7 +368,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       return (true,dp,cc)
     return (false,dp,cc)
 
-
   var fronts = newSeqWith(1,newSeq[Val]())
   var completedMin = EPS
   block: # 最初は白以外
@@ -392,7 +379,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         fronts[0] &= (choise.val,choise.mat,0,0,newDP(),newCC(),newStack[int]())
       fronts = fronts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
   for progress in 0..<(base.width * base.height):
-    var popNum = 0
     var nexts = newSeqWith( # top()が一番雑魚になる
         min(fronts.len(),orders.len())+1,
         newBinaryHeap[Val](proc(x,y:Val): int = y.val - x.val))
@@ -404,7 +390,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       if storedWorstVal(ord) <= val.val : return
       nexts[ord].push(val)
       if nexts[ord].len() > maxFrontierNum :
-        popNum += 1
         discard nexts[ord].pop()
     for ord in 0..<fronts.len():
       let front = fronts[ord]
@@ -554,26 +539,55 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 v.fund.push(next mod top)
                 return true)
     let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
-    echo stopWatch
-    stopWatch.reset()
-    lstopWatch.stop()
-    echo lstopWatch
-    lstopWatch.reset()
-    lstopWatch.start()
-    echo popNum," Pop"
+    # 最後のプロセス省略
     if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
-    echo nextItems.mapIt(it.len())
-    echo nextItems.mapIt(it.mapIt(it.val)).mapIt([it.max(),it.min()])
+    # echo nextItems.mapIt(it.len())
+    # echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
+    echo fronts[^1][0].mat.toConsole(),fronts[^1][0].val,"\n"
+    # echo fronts[^1][0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    # stdout.write progress;stdout.flushFile
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
-    # let front = fronts[^1]
-    # for j in 0..<front.len():
-    #   let i = 0 - j
-    #   echo front[i].mat.toConsole(),front[i].val ,"\n"
-    #   if i == 0 :
-    #     echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
-    #     break
-    # echo base.toConsole()
-    # echo orders
+  block: # 成果
+    proc embedNotdecided(self:var Matrix[PietColor]) : int =
+      let initalMatrix = self.deepCopy()
+      for x in 0..<self.width:
+        for y in 0..<self.height:
+          if self.isDecided(x,y): continue
+          let color = base[x,y]
+          if color >= chromMax or not initalMatrix.checkAdjast(color,x,y):
+            self[x,y] = color
+      result = 0
+      for x in 0..<self.width:
+        for y in 0..<self.height:
+          if self.isDecided(x,y): continue
+          var minVal = EPS
+          for c in 0..<chromMax:
+            if initalMatrix.checkAdjast(c.PietColor,x,y) : continue
+            let dist = distance(c.PietColor,base[x,y])
+            if dist < minVal:
+              self[x,y] = c.PietColor
+              minVal = dist
+          result += minVal
+    proc findEmbeddedMinIndex():int =
+      var minIndex = 0
+      var minVal = EPS
+      for i,front in fronts[^1]:
+        var mat = front.mat.deepCopy()
+        var val = front.val
+        val += mat.embedNotdecided()
+        if minVal < val : continue
+        minIndex = i
+        minVal = val
+      return minIndex
+
+    result = fronts[^1][findEmbeddedMinIndex()].mat
+    discard result.embedNotdecided()
+    echo "result :\n",result.toConsole()
+    echo "base   :\n",base.toConsole()
+    echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    echo orders
+
+
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
@@ -623,8 +637,9 @@ if isMainModule:
     stegano1D(orders,baseImg)
     quasiStegano1D(orders,baseImg)
   if true:
-    let orders = makeRandomOrders(16)
-    let baseImg = makeLocalRandomPietColorMatrix(10,10)
-    quasiStegano2D(orders,baseImg)
+    let orders = makeRandomOrders(32)
+    let baseImg = makeLocalRandomPietColorMatrix(16,16)
+    echo baseImg.toConsole(),"\n"
+    discard quasiStegano2D(orders,baseImg,100).toConsole()
   # baseImg.save()
   # stegano.save()
