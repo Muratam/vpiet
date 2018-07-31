@@ -105,28 +105,18 @@ proc `$`(orders:seq[OrderAndArgs]):string =
 
 # 色差関数
 proc distance(a,b:PietColor) : int =
-  # if a == b : return 0
-  # const w = 10
-  # const maxW = ((w * hueMax div 2) + lightMax ) * 2
-  # if a == WhiteNumber and b == BlackNumber : return maxW
-  # if a == BlackNumber and b == WhiteNumber : return maxW
-  # if a == WhiteNumber : return w+b.light
-  # if b == WhiteNumber : return w+a.light
-  # if a == BlackNumber : return w+2-b.light
-  # if b == BlackNumber : return w+2-a.light
-  # return abs(a.light - b.light) + w * min(abs(a.hue - b.hue),abs(abs(a.hue - b.hue) - hueMax))
   let (ar,ag,ab) = a.toRGB()
   let (br,bg,bb) = b.toRGB()
-  proc diff(x,y:uint8):int =
-    let dist = abs(x.int-y.int)
-    return dist
-    # const th = min(0xc0-0x00,0xff-0xc0)
-    # return
-    #   if dist < th : 0
-    #   elif dist < 0xff : 1
-    #   else : 2
-  # 同じ:0 ~ 白->黒:6
-  return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
+  # proc diff(x,y:uint8):int = abs(x.int-y.int)
+  # return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
+  # wikipediaの近似式
+  proc sq(x:uint8):int = x.int * x.int
+  let rr = 0.0 # (ar.int + br.int) / 512
+  let dr = sq(ar-br).float
+  let dg = sq(ag-bg).float
+  let db = sq(ab-bb).float
+  # rr = 0.0 とすれば同じ
+  return ((2 + rr) * dr + 4 * dg + (3 - rr) * db).sqrt.int
 
 var colorTable = newSeqWith(PietColor.high.int+1,newSeqWith(Order.high.int+1,-1))
 proc getNextColor(i:int,operation:Order):int = #i.PietColor.decideNext(operation)
@@ -317,14 +307,14 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   echo base.toConsole(),"\n"
-  const maxFrontierNum = 400
+  const maxFrontierNum = 100
   const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:int]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
   proc updateMat(f:var Val,x,y:int,color:PietColor) =
     if f.mat[x,y] == color: return
     f.mat[x,y] = color
-    f.val += distance(color,base[x,y]) - 1
+    f.val += distance(color,base[x,y]) + 1
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
   proc checkAdjast(mat:Matrix[PietColor],color:PietColor,x,y:int) : bool =
@@ -338,7 +328,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     let (cX,cY) = mat.getEightDirection(x,y).getNextPos(dp,cc)
     if not isIn(cX,cY) or mat.isDecided(cX,cY) : return false
     return true
-
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
   proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,onlyOne=false): seq[EmbedColorType] =
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
@@ -357,7 +346,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       var newMat = mat.deepCopy()
       newMat[x,y] = color
       # 確定している量が多いほどちょっと偉い
-      let newVal = val + distance(color,base[x,y]) - 1
+      let newVal = val + distance(color,base[x,y]) + 1
       let next : EmbedColorType = (newMat,newVal)
       if q.len() > maxEmbedColor: # 多すぎるときは一番雑魚を省く
         if q.top().val <= next.val : continue
@@ -377,7 +366,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         result &= pre
         isFirst = false
         continue
-      let next = q.pop()
+      let next = q.pop() # WARN: 同率のときに一個飛ばしだが同じものがあるかも...
       let isSame = (proc ():bool =
         for x in 0..<startMat.width:
           for y in 0..<startMat.height:
@@ -503,13 +492,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
           decide(0,-1,hereColor.getNextColor(Mod).PietColor,false)
     fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     let front = fronts[^1]
-    for i in 0..<front.len():
-      echo "->{front[i].val}".fmt()
-      echo front[i].mat.toConsole() & "\n"
-      echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
-      echo base.toConsole()
-      echo orders
-      if i >= 0: break
+    for j in 0..<front.len():
+      let i = 10 - j
+      echo front[i].mat.toConsole(),front[i].val ,"\n"
+      if i == 0 :
+        echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+        break
+    echo base.toConsole()
+    echo orders
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
@@ -559,7 +549,7 @@ if isMainModule:
     stegano1D(orders,baseImg)
     quasiStegano1D(orders,baseImg)
   if true:
-    let orders = makeRandomOrders(30)
+    let orders = makeRandomOrders(16)
     let baseImg = makeLocalRandomPietColorMatrix(10,10)
     quasiStegano2D(orders,baseImg)
   # baseImg.save()
