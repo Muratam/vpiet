@@ -19,12 +19,18 @@ proc newStack*[T](size:int = 64):Stack[T] =
   result.data = newSeq[T](size)
   result.size = size
   result.index = -1
-proc isEmpty*[T](self:var Stack[T]): bool = self.index < 0
-proc isValid*[T](self:var Stack[T]):bool = self.index >= 0 and self.index < self.size
-proc len*[T](self:var Stack[T]): int =
+proc deepCopy*[T](self:Stack[T]) : Stack[T] =
+  new(result)
+  result.size = self.size
+  result.index = self.index
+  result.data = self.data
+
+proc isEmpty*[T](self:Stack[T]): bool = self.index < 0
+proc isValid*[T](self:Stack[T]):bool = self.index >= 0 and self.index < self.size
+proc len*[T](self:Stack[T]): int =
   if self.isEmpty(): return 0
   return self.index + 1
-proc top*[T](self:var Stack[T]): T =
+proc top*[T](self:Stack[T]): T =
   assert self.isValid()
   return self.data[self.index]
 proc pop*[T](self:var Stack[T]): T {.discardable.} =
