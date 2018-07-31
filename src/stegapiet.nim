@@ -382,6 +382,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 
   var fronts = newSeqWith(1,newSeq[Val]())
+  var completedMin = EPS
   block: # 最初は白以外
     for i in 0..<chromMax:
       var initMat = newMatrix[PietColor](base.width,base.height)
@@ -396,8 +397,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         min(fronts.len(),orders.len())+1,
         newBinaryHeap[Val](proc(x,y:Val): int = y.val - x.val))
     proc storedWorstVal(ord:int):int =
-      if nexts[ord].len() < maxFrontierNum : return EPS
-      return nexts[ord].top().val
+      if nexts[ord].len() < maxFrontierNum : return min(EPS,completedMin)
+      if nexts[ord].len() == 0 : return min(EPS,completedMin)
+      return min(nexts[ord].top().val,completedMin)
     proc store(ord:int,val:Val) =
       if storedWorstVal(ord) <= val.val : return
       nexts[ord].push(val)
@@ -407,7 +409,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     for ord in 0..<fronts.len():
       let front = fronts[ord]
       if ord == orders.len():
-        for f in front: store(ord,f)
+        for f in front:
+          completedMin .min= f.val
+          nexts[ord].push(f)
         continue
       let order = orders[ord]
       for f in front:
@@ -557,6 +561,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     lstopWatch.reset()
     lstopWatch.start()
     echo popNum," Pop"
+    if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
     echo nextItems.mapIt(it.len())
     echo nextItems.mapIt(it.mapIt(it.val)).mapIt([it.max(),it.min()])
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
