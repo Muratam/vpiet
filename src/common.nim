@@ -1,6 +1,6 @@
 import sequtils,strutils,algorithm,math,future,macros,strformat,times,random,os
 export sequtils,strutils,algorithm,math,future,macros,strformat,times,random,os
-
+import hashes
 # いわゆるcommonモジュール
 
 proc `*`*(str:string,n:int) : string =
@@ -57,6 +57,7 @@ proc newMatrix*[T](width,height:int):Matrix[T] =
   result.data = newSeq[T](width * height)
   result.width = width
   result.height = height
+proc hash*[T](self:Matrix[T]): Hash = self.data.hash()
 proc deepCopy*[T](self:Matrix[T]):Matrix[T] =
   new(result)
   result.width = self.width
@@ -90,12 +91,24 @@ const PosLeft* = (-1.int32,0.int32)
 template `max=`*(x,y:typed):void = x = max(x,y)
 template `min=`*(x,y:typed):void = x = min(x,y)
 # stopWatch
-type StopWatch* = tuple[sum,pre:float]
+type StopWatch* = ref object
+  sum,pre:float
+  call:int
+proc newStopWatch*():StopWatch=
+  new(result)
+  result.sum = 0.0
+  result.pre = 0.0
+  result.call = 0
+proc reset*(self:var StopWatch) =
+  self.sum = 0.0
+  self.pre = 0.0
+  self.call = 0
 proc start*(self:var StopWatch) =
   self.pre = cpuTime()
 proc stop*(self:var StopWatch) =
   self.sum += cpuTime() - self.pre
-proc `$`*(self:StopWatch):string = fmt"{self.sum}s"
+  self.call += 1
+proc `$`*(self:StopWatch):string = fmt"{self.sum}s ({self.call})"
 # Union Find
 type UnionFindTree[T] = ref object
   parent: seq[int]

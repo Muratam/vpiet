@@ -16,6 +16,7 @@ if pietOrderType != TerminateAtGreater:
   quit("only TerminateAtGreater is allowed")
 
 const chromMax = hueMax * lightMax
+const EPS = 1e12.int
 
 proc getInfo(self: Matrix[PietColor],x,y:int) : tuple[endPos:EightDirection[Pos],size:int] =
   # 現在位置から次の8方向を探索して返す
@@ -129,7 +130,6 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   checkStegano1D(orders,base)
   # result = newMatrix[PietColor](base.width,1)
   # https://photos.google.com/photo/AF1QipMlNFgMkP-_2AtsRZcYbPV3xkBjU0q8bKxql9p3?hl=ja
-  const EPS = 1e12.int
   # 有彩色 + 白 (黒は使用しない)
   type DPKey = tuple[color,nop,ord,fund:int]  # [color][Nop][Order][Fund]
   type DPVal = tuple[val:int,preKey:DPKey] # Σ,前のやつ
@@ -301,14 +301,18 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
   echo base.toConsole(),"\n"
-  const maxFrontierNum = 300
-  const maxEmbedColor = 10
+  const maxFrontierNum = 500
+  const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:Stack[int]]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
+  proc updateVal(val:var int,x,y:int,color:PietColor) =
+    val += distance(color,base[x,y]) + 1
+  proc updateMat(mat:var Matrix[PietColor],x,y:int,color:PietColor) =
+    mat[x,y] = color
   proc update(mat:var Matrix[PietColor],val:var int,x,y:int,color:PietColor) =
     if mat[x,y] == color: return
-    mat[x,y] = color
-    val += distance(color,base[x,y]) + 1
+    mat.updateMat(x,y,color)
+    val.updateVal(x,y,color)
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
   proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
   proc checkAdjast(mat:Matrix[PietColor],color:PietColor,x,y:int) : bool =
@@ -322,38 +326,45 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     let (cX,cY) = mat.getInfo(x,y).endPos.getNextPos(dp,cc)
     if not isIn(cX,cY) or mat.isDecided(cX,cY) : return false
     return true
+  var stopWatch = newStopWatch()
+  var lstopWatch = newStopWatch()
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
-  proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,onlyOne=false): seq[EmbedColorType] =
+  var stack = newStack[tuple[x,y,val:int,mat:Matrix[PietColor]]]() # プーリング
+  proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,allowScore:int,onlyOne=false): seq[EmbedColorType] =
+    stopWatch.start()
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
     # ただし,埋めれば埋めるほど当然損なので,最大でもmaxEmbedColorマスサイズにしかならない
     doAssert color < chromMax
-    var stack = newStack[tuple[x,y,val:int,mat:Matrix[PietColor]]]()
+    doAssert stack.len() == 0
     # q.top()が一番雑魚になる
     var q = newBinaryHeap[EmbedColorType](proc(x,y:EmbedColorType): int = y.val - x.val)
-    stack.push((startX,startY,startVal,startMat))
-    var table = initSet[string]()
+    template checkAndPush(x,y,val,mat) =
+      if isIn(x,y) and
+          not mat.isDecided(x,y) and
+          not startMat.checkAdjast(color,x,y) :
+        stack.push((x,y,val,mat))
+    checkAndPush(startX,startY,startVal,startMat)
+    var table = initSet[Matrix[PietColor]]()
     while not stack.isEmpty():
       # WARN: 一筆書きできるようにしか配置できない！
       let (x,y,val,mat) = stack.pop()
-      if not isIn(x,y) : continue
-      if mat.isDecided(x,y) : continue
-      if startMat.checkAdjast(color,x,y) : continue
-      var newMat = mat.deepCopy()
       var newVal = val
-      newMat.update(newVal,x,y,color)
-      let next : EmbedColorType = (newMat,newVal)
+      newVal.updateVal(x,y,color)
+      if allowScore <= newVal : continue
       if q.len() > maxEmbedColor: # 多すぎるときは一番雑魚を省く
-        if q.top().val <= next.val : continue
-        if $q.top().mat in table : continue
-        let dis = q.pop()
-        table.excl($dis.mat)
-      q.push(next)
-      table.incl($next.mat)
+        if q.top().val <= newVal : continue
+        table.excl(q.pop().mat)
+      var newMat = mat.deepCopy()
+      newMat.updateMat(x,y,color)
+      if newMat in table : continue
+      q.push((newMat,newVal))
+      table.incl(newMat)
       if onlyOne : break # 一つだけほしいときはすぐにリタイア
-      stack.push((x+1,y,newVal,newMat))
-      stack.push((x-1,y,newVal,newMat))
-      stack.push((x,y+1,newVal,newMat))
-      stack.push((x,y-1,newVal,newMat))
+      checkAndPush(x+1,y,newVal,newMat)
+      checkAndPush(x-1,y,newVal,newMat)
+      checkAndPush(x,y+1,newVal,newMat)
+      checkAndPush(x,y-1,newVal,newMat)
+    stopWatch.stop()
     result = @[]
     while q.len() > 0: result &= q.pop()
   proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
@@ -375,18 +386,28 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     for i in 0..<chromMax:
       var initMat = newMatrix[PietColor](base.width,base.height)
       initMat.point((x,y) => -1)
-      let choises = initMat.embedColor(0,0,0,i.PietColor)
+      let choises = initMat.embedColor(0,0,0,i.PietColor,EPS)
       for choise in choises:
         fronts[0] &= (choise.val,choise.mat,0,0,newDP(),newCC(),newStack[int]())
       fronts = fronts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
   for progress in 0..<(base.width * base.height):
-    var nexts = newSeqWith(min(fronts.len(),orders.len())+1,newSeq[Val]())
-    # if fronts.len() > 1 and fronts[0..^2].allIt(it.len() == 0) : break
-    # echo fronts.mapIt(it.len())
+    var popNum = 0
+    var nexts = newSeqWith( # top()が一番雑魚になる
+        min(fronts.len(),orders.len())+1,
+        newBinaryHeap[Val](proc(x,y:Val): int = y.val - x.val))
+    proc storedWorstVal(ord:int):int =
+      if nexts[ord].len() < maxFrontierNum : return EPS
+      return nexts[ord].top().val
+    proc store(ord:int,val:Val) =
+      if storedWorstVal(ord) <= val.val : return
+      nexts[ord].push(val)
+      if nexts[ord].len() > maxFrontierNum :
+        popNum += 1
+        discard nexts[ord].pop()
     for ord in 0..<fronts.len():
       let front = fronts[ord]
       if ord == orders.len():
-        for f in front: nexts[ord] &= f
+        for f in front: store(ord,f)
         continue
       let order = orders[ord]
       for f in front:
@@ -397,19 +418,20 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
           let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
           if not ok : return
           let (nX,nY) = endPos.getNextPos(dp,cc)
+          let nOrd = ord+dOrd
           if f.mat.isDecided(nX,nY) : # このままいけそうなら交差してみます
             if f.mat[nX,nY] != color : return
             if not f.mat.checkNextIsNotDecided(nX,nY,dp,cc): return
             var next : Val = (f.val,f.mat.deepCopy(),nX,nY,dp,cc,f.fund.deepCopy())
             if not next.callback():return
-            nexts[ord+dOrd] &= next
+            store(nOrd,next)
             return
           # 次がPushなら Push 1 なので 1マスだけなのに注意
-          let choises = f.mat.embedColor(f.val,nX,nY,color,onlyOne)
+          let choises = f.mat.embedColor(f.val,nX,nY,color,storedWorstVal(nOrd),onlyOne)
           for choise in choises:
             var next : Val = (choise.val,choise.mat,nX,nY,dp,cc,f.fund.deepCopy())
             if not next.callback():continue
-            nexts[ord+dOrd] &= next
+            store(nOrd,next)
           return
 
         if f.fund.len() == 0: # 命令を進められるのは fund == 0 のみ
@@ -423,7 +445,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
           if f.mat.isDecided(bX,bY) : return
           var next : Val = (f.val,f.mat.deepCopy(),f.x,f.y,f.dp,f.cc,f.fund.deepCopy())
           next.mat.update(next.val,bX,bY,BlackNumber)
-          nexts[ord] &= next
+          store(ord,next)
         )()
         (proc = # 白を使うNop
           # 現仕様ではPiet08/KMCPietどちらでも動く！
@@ -457,18 +479,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
               if not f.mat.checkNextIsNotDecided(cx,cy,dp,cc) : continue
               var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund.deepCopy())
               next.toWhites()
-              nexts[ord] &= next
+              store(ord,next)
               continue
             # 白の次にマス
             var next : Val = (f.val,f.mat.deepCopy(),cx,cy,dp,cc,f.fund)
             next.toWhites()
             for c in 0..<chromMax:
-              # next.mat.update(next.val,cx,cy,c.PietColor)
-              # nexts[ord] &= next
               if next.mat.checkAdjast(c.PietColor,cx,cy) : continue
-              let choises = next.mat.embedColor(next.val,cx,cy,c.PietColor)
+              let choises = next.mat.embedColor(next.val,cx,cy,c.PietColor,storedWorstVal(ord))
               for choise in choises:
-                nexts[ord] &= (choise.val,choise.mat,cx,cy,dp,cc,next.fund.deepCopy())
+                store(ord,(choise.val,choise.mat,cx,cy,dp,cc,next.fund.deepCopy()))
         )()
         # fund
         decide(0,hereColor.getNextColor(Push).PietColor,false,
@@ -529,18 +549,26 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
                 if top == 0 : return false
                 v.fund.push(next mod top)
                 return true)
-    echo nexts.mapIt(it.len())
-    echo nexts.mapIt(it.mapIt(it.val)).mapIt([it.max(),it.min()])
-    fronts = nexts.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
-    let front = fronts[^1]
-    for j in 0..<front.len():
-      let i = 0 - j
-      echo front[i].mat.toConsole(),front[i].val ,"\n"
-      if i == 0 :
-        echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
-        break
-    echo base.toConsole()
-    echo orders
+    let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
+    echo stopWatch
+    stopWatch.reset()
+    lstopWatch.stop()
+    echo lstopWatch
+    lstopWatch.reset()
+    lstopWatch.start()
+    echo popNum," Pop"
+    echo nextItems.mapIt(it.len())
+    echo nextItems.mapIt(it.mapIt(it.val)).mapIt([it.max(),it.min()])
+    fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+    # let front = fronts[^1]
+    # for j in 0..<front.len():
+    #   let i = 0 - j
+    #   echo front[i].mat.toConsole(),front[i].val ,"\n"
+    #   if i == 0 :
+    #     echo front[i].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    #     break
+    # echo base.toConsole()
+    # echo orders
 
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
