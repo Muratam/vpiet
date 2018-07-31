@@ -6,6 +6,7 @@ import curse
 import makegraph
 import sets
 # TODO: 一筆書きの制限削除
+# 次がPushを控えているからといってそのサイズじゃないといけない可能性は少ない!!
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
 
