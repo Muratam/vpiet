@@ -1,13 +1,12 @@
 import common
 import pietbase
+import pietmap
 import pietize
 import curse
 import makegraph
 import sets
 # 一筆書き制限の解除
-# 終了を埋め込む
-if pietOrderType != TerminateAtGreater:
-  quit("only TerminateAtGreater is allowed")
+# -> Push 121 = 11x2...と分解みたいなことも
 
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
@@ -114,6 +113,8 @@ proc getNextColor(i:int,operation:Order):int = #i.PietColor.decideNext(operation
   return colorTable[i][operation.int]
 
 proc checkStegano1D(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+  if pietOrderType != TerminateAtGreater:
+    quit("only TerminateAtGreater is allowed")
   # orders : inc dup ... push terminate
   doAssert orders[^1].operation == Terminate         ,"invalid"
   doAssert orders[0..^2].allIt(it.order == Operation),"invalid"
@@ -423,10 +424,28 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             store(nOrd,next)
           return
 
-        if f.fund.len() == 0: # 命令を進められるのは fund == 0 のみ
+        if f.fund.len() == 0 and order.operation != Terminate: # 命令を進められるのは fund == 0 のみ
           let nextIsPush = if ord + 1 < orders.len() : orders[ord+1].operation  == Push else: false
           let nextColor = hereColor.getNextColor(order.operation)
           decide(1,nextColor.PietColor,nextIsPush,proc(_:var Val):bool=true)
+        if order.operation == Terminate:
+          (proc =
+            var dp = f.dp
+            var cc = f.cc
+            var mat = f.mat.deepCopy()
+            var val = f.val
+            for i in 0..<8:
+              let (bX,bY) = endPos.getNextPos(dp,cc)
+              if not isIn(bX,bY) or mat[bX,bY] == BlackNumber:
+                if i mod 2 == 0 : cc.toggle()
+                else: dp.toggle(1)
+                continue
+              # 黒を置かなければならないので
+              if mat.isDecided(bX,bY) : return
+              mat.update(val,bX,bY,BlackNumber)
+            # 全方向巡りできた
+            store(ord+1,(val,mat,f.x,f.y,dp,cc,f.fund.deepCopy()))
+          )()
         (proc = # 次の行き先に1マスだけ黒ポチー
           let (bX,bY) = endPos.getNextPos(f.dp,f.cc)
           if not isIn(bX,bY): return
@@ -538,14 +557,22 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
                 if top == 0 : return false
                 v.fund.push(next mod top)
                 return true)
+          decide(0,hereColor.getNextColor(Greater).PietColor,false,
+            proc(v:var Val) :bool=
+                let top = v.fund.pop()
+                let next = v.fund.pop()
+                v.fund.push(if next > top : 1 else:0)
+                return true)
+
     let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
-    # 最後のプロセス省略
-    if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
-    # echo nextItems.mapIt(it.len())
-    # echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
-    echo fronts[^1][0].mat.toConsole(),fronts[^1][0].val,"\n"
-    # echo fronts[^1][0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
-    # stdout.write progress;stdout.flushFile
+    if fronts[^1].len() > 0 :
+      # 最後のプロセス省略
+      if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
+      # echo nextItems.mapIt(it.len())
+      # echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
+      echo fronts[^1][0].mat.toConsole(),fronts[^1][0].val,"\n"
+      # echo fronts[^1][0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+      # stdout.write progress;stdout.flushFile
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
   block: # 成果
     proc embedNotdecided(self:var Matrix[PietColor]) : int =
@@ -579,8 +606,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         minIndex = i
         minVal = val
       return minIndex
-
+    doAssert fronts[^1].len() > 0
     result = fronts[^1][findEmbeddedMinIndex()].mat
+    echo "before:result :\n",result.toConsole()
     discard result.embedNotdecided()
     echo "result :\n",result.toConsole()
     echo "base   :\n",base.toConsole()
@@ -597,7 +625,7 @@ proc makeRandomOrders(length:int):seq[OrderAndArgs] =
       for o in oo:
         if o notin [ErrorOrder,Terminate,Pointer,Switch] :
           result &= o
-  result = newSeq[OrderAndArgs]()
+  result = @[]
   let orderlist = getValidOrders()
   for _ in 0..<length:
     let order = orderlist[rand(orderlist.len()-1)]
@@ -636,10 +664,33 @@ if isMainModule:
     let baseImg = makeRandomPietColorMatrix(64,1)
     stegano1D(orders,baseImg)
     quasiStegano1D(orders,baseImg)
-  if true:
-    let orders = makeRandomOrders(32)
-    let baseImg = makeLocalRandomPietColorMatrix(16,16)
-    echo baseImg.toConsole(),"\n"
-    discard quasiStegano2D(orders,baseImg,100).toConsole()
+  if false:
+    let orders = makeRandomOrders(20)
+    let baseImg = makeLocalRandomPietColorMatrix(12,12)
+    echo baseImg.toConsole()
+    discard quasiStegano2D(orders,baseImg,400).toConsole()
+  if commandLineParams().len() > 0:
+    let baseImg = commandLineParams()[0].newPietMap().pietColorMap
+    proc getOrders():seq[OrderAndArgs] =
+      result = @[]
+      let orders = @[
+        # 80 73 69 84
+        Push,Dup,Dup,Add,Add,Dup,Mul,Dup,Mul,Push,Sub,Dup,OutC,Dup, # 80
+        Push,Dup,Dup,Add,Add,Dup,Push,Add,Add,Sub,Dup,OutC, # 73
+        Push,Dup,Add,Dup,Add,Sub,Dup,OutC,#69
+        Push,Dup,Add,Dup,Add,Add,OutC,#84
+      ]
+      for order in orders:
+        let args = if order == Push : @["1"] else: @[]
+        result &= (Operation,order,args)
+      result &= (MoveTerminate,Terminate,@[])
+    let orders = getOrders()
+    # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
+    echo orders
+    echo baseImg.toConsole()
+    let stegano = quasiStegano2D(orders,baseImg,500)
+    stegano.save("./piet.png")
+
+
   # baseImg.save()
   # stegano.save()
