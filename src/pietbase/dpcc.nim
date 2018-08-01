@@ -15,8 +15,6 @@ proc getdXdY*(dp:DP): tuple[x,y:int] =
     of DPDown: (0,1)
     of DPUp: (0,-1)
 
-
-
 iterator allCCDP*():(CC,DP) =
   yield (CCLeft ,DPRight)
   yield (CCRight,DPRight)
