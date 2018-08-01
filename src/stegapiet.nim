@@ -272,7 +272,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     mat.updateMat(x,y,color)
     val.updateVal(x,y,color)
   proc isDecided(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0
-  proc isChromatic(mat:Matrix[PietColor],x,y:int) : bool = mat[x,y] >= 0 and mat[x,y] < chromMax
   proc checkAdjast(mat:Matrix[PietColor],color:PietColor,x,y:int) : bool =
     for dxdy in [(0,1),(0,-1),(1,0),(-1,0)]:
       let (dx,dy) = dxdy
@@ -285,7 +284,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     if not isIn(cX,cY) or mat.isDecided(cX,cY) : return false
     return true
   type EmbedColorType = tuple[mat:Matrix[PietColor],val:int]
-  var stack = newStack[tuple[x,y,val:int,mat:Matrix[PietColor],size:int]]() # プーリング
+  type EmbedStackType = tuple[x,y,val:int,mat:Matrix[PietColor],size:int,path:seq[tuple[x,y:int]]]
+  var stack = newStack[EmbedStackType]() # プーリング
   proc embedColor(startMat:Matrix[PietColor],startVal,startX,startY:int,color:PietColor,allowScore:int,allowBlockSize:int): seq[EmbedColorType] =
     # 未確定の場所を埋めれるだけ埋めてゆく(ただし上位スコアmaxEmbedColorまで)
     # ただし,埋めれば埋めるほど当然損なので,最大でもmaxEmbedColorマスサイズにしかならない
@@ -293,17 +293,17 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     doAssert stack.len() == 0
     # q.top()が一番雑魚になる
     var q = newBinaryHeap[EmbedColorType](proc(x,y:EmbedColorType): int = y.val - x.val)
-    template checkAndPush(x,y,val,mat,size) =
+    template checkAndPush(x,y,val,mat,size,path) =
       if isIn(x,y) and
           (allowBlockSize <= 0 or size <= allowBlockSize) and
           not mat.isDecided(x,y) and
           not startMat.checkAdjast(color,x,y) :
-        stack.push((x,y,val,mat,size))
-    checkAndPush(startX,startY,startVal,startMat,1)
+        stack.push((x,y,val,mat,size,path & (x,y)))
+    checkAndPush(startX,startY,startVal,startMat,1,newSeq[tuple[x,y:int]]())
     var table = initSet[Matrix[PietColor]]()
     while not stack.isEmpty():
-      # WARN: 一筆書きできるようにしか配置できない！
-      let (x,y,val,mat,size) = stack.pop()
+      # 一筆書きほどの速度は欲しい...
+      let (x,y,val,mat,size,path) = stack.pop()
       var newVal = val
       newVal.updateVal(x,y,color)
       if allowScore <= newVal : continue
@@ -312,15 +312,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         table.excl(q.pop().mat)
       var newMat = mat.deepCopy()
       newMat.updateMat(x,y,color)
-      if newMat in table : continue
       if allowBlockSize <= 0 or size == allowBlockSize :
         # if allowBlockSize > 0 : echo size
         q.push((newMat,newVal))
         table.incl(newMat)
-      checkAndPush(x+1,y,newVal,newMat,size+1)
-      checkAndPush(x-1,y,newVal,newMat,size+1)
-      checkAndPush(x,y+1,newVal,newMat,size+1)
-      checkAndPush(x,y-1,newVal,newMat,size+1)
+      for xy in path:
+        let (nx,ny) = xy
+        checkAndPush(nx+1,ny,newVal,newMat,size+1,path)
+        checkAndPush(nx-1,ny,newVal,newMat,size+1,path)
+        checkAndPush(nx,ny+1,newVal,newMat,size+1,path)
+        checkAndPush(nx,ny-1,newVal,newMat,size+1,path)
     result = @[]
     while q.len() > 0: result &= q.pop()
   proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
@@ -381,7 +382,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       for f in front:
         let hereColor = f.mat[f.x,f.y]
         if hereColor >= chromMax : continue # 簡単のために白は経由しない
-        let endPos = f.mat.getInfo(f.x,f.y).endPos
+        proc getEndPos(f:Val) : EightDirection[Pos] = f.mat.getInfo(f.x,f.y).endPos
         proc judgeNextBlock(f:Val,ord:int,dFund:int,color:PietColor,callback:proc(_:var Val):bool) =
           # 現在位置から[色塗り|交差判定]を行う
           # 次がPushでかつこれを実行した後にfund.len()==0になる(ので実行できるならやるしかない)
@@ -414,6 +415,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           return
 
         proc decide(dOrd:int,dFund:int,color:PietColor,callback:proc(_:var Val):bool) =
+          let endPos = f.getEndPos()
           let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
           if not ok : return
           let (nX,nY) = endPos.getNextPos(dp,cc)
@@ -430,25 +432,33 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           let nextColor = hereColor.getNextColor(order.operation).PietColor
           decide(1,0,nextColor,proc(_:var Val):bool=true)
         if order.operation == Terminate: # どんなfundであれ終われば正義
-          (proc =
+          proc tryTerminate(f:Val) : bool =
             var dp = f.dp
             var cc = f.cc
             var mat = f.mat.deepCopy()
             var val = f.val
-            for i in 0..<2: # TODO: 大嘘 (正解は8)
-              let (bX,bY) = endPos.getNextPos(dp,cc)
+            for i in 0..<8:
+              let (bX,bY) = f.getEndPos().getNextPos(dp,cc)
               if isIn(bX,bY):
                 # 黒をおかなければならない
-                if mat[bX,bY] != BlackNumber: return
-                if not mat.isDecided(bX,bY):
-                  mat.update(val,bX,bY,BlackNumber)
+                if mat.isDecided(bX,bY) and mat[bX,bY] != BlackNumber: return false
+                mat.update(val,bX,bY,BlackNumber)
               if i mod 2 == 0 : cc.toggle()
               else: dp.toggle(1)
             # 全方向巡りできた
             store(ord+1,(val,mat,f.x,f.y,dp,cc,f.fund.deepCopy(),false))
-          )()
+            return true
+          if not f.tryTerminate():
+            # proc tryAllDPCC(mat:Matrix[PietColor],eightDirection:EightDirection[Pos],startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+            let (ok,dp,cc) = tryAllDPCC(f.mat,f.getEndPos(),f.dp,f.cc)
+            let (bX,bY) = f.getEndPos().getNextPos(dp,cc)
+            let choises = f.mat.embedColor(f.val,bX,bY,hereColor.getNextColor(Push).PietColor,storedWorstVal(ord+1),-1)
+            for choise in choises:
+              var fund = f.fund.deepCopy()# WARN: stackが一応増えてはいるがどうせ終了するので無視
+              let next : Val = (choise.val,choise.mat,bX,bY,dp,cc,fund,false)
+              discard next.tryTerminate()
         (proc = # 次の行き先に1マスだけ黒ポチー
-          let (bX,bY) = endPos.getNextPos(f.dp,f.cc)
+          let (bX,bY) = f.getEndPos().getNextPos(f.dp,f.cc)
           if not isIn(bX,bY): return
           # 既に黒が置かれているならわざわざ置く必要がない
           if f.mat.isDecided(bX,bY) : return
@@ -460,10 +470,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           # 現仕様ではPiet08/KMCPietどちらでも動く！
           # WARN: x - - | # 壁で反射みたいなこともできるよねー
           # x - - - y (-の数N * 次の色C)
-          let (ok,dp,cc) = f.mat.tryAllDPCC(endPos,f.dp,f.cc)
+          let (ok,dp,cc) = f.mat.tryAllDPCC(f.getEndPos(),f.dp,f.cc)
           if not ok : return
           let (dx,dy) = dp.getdXdY()
-          var (x,y) = endPos.getNextPos(dp,cc)
+          var (x,y) = f.getEndPos().getNextPos(dp,cc)
           for i in 1..max(base.width,base.height):
             let (cx,cy) = (x+dx*i,y+dy*i)
             # 流石にはみ出したら終了
