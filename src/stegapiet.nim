@@ -6,6 +6,8 @@ import curse
 import makegraph
 import sets
 # TODO: 一筆書きの制限削除
+# エッジ(隣接色が同じ色の数)でマスク :: 0:変えてよい 1:それなりに 2: まあ 3:うーん 4:えー
+# 色関数(近い順に並べた表を作るとわかりやすい)/ PushFlag(次Pushと確定ならばサイズ調整する価値がある)
 # 次がPushを控えているからといってそのサイズじゃないといけない可能性は少ない!!
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
@@ -94,16 +96,38 @@ proc `$`(orders:seq[OrderAndArgs]):string =
 proc distance(a,b:PietColor) : int =
   let (ar,ag,ab) = a.toRGB()
   let (br,bg,bb) = b.toRGB()
-  # proc diff(x,y:uint8):int = abs(x.int-y.int)
-  # return diff(ar,br) + diff(ag,bg) + diff(ab,bb)
+  proc diff(x,y:uint8):int = abs(x.int-y.int)
+  let w =
+    if a == b: 0
+    elif a.nwb != None and b.nwb != None : 8
+    elif a.nwb != None or  b.nwb != None :
+      if a.nwb != None: 0 + a.light * (if b == BlackNumber:1 else:2)
+      else: 0 + b.light * (if a == BlackNumber:1 else:2)
+    elif a.hue == b.hue : 2 + abs(a.light - b.light)
+    else: 4 + abs(a.light - b.light)
+  return 2*diff(ar,br) + 4*diff(ag,bg) + 3*diff(ab,bb) + w * 256
   # wikipediaの近似式
-  proc sq(x:uint8):int = x.int * x.int
-  let rr = (ar.int + br.int) / 512
-  let dr = sq(ar-br).float
-  let dg = sq(ag-bg).float
-  let db = sq(ab-bb).float
-  # rr = 0.0 とすれば同じ
-  return ((2 + rr) * dr + 4 * dg + (3 - rr) * db).sqrt.int
+  # proc sq(x:uint8):int = x.int * x.int
+  # let rr = 0.0 # (ar.int + br.int) / 512
+  # let dr = sq(ar-br).float
+  # let dg = sq(ag-bg).float
+  # let db = sq(ab-bb).float
+  # # rr = 0.0 とすれば同じ
+  # return ((2 + rr) * dr + 4 * dg + (3 - rr) * db).sqrt.int
+
+proc showDistance() =
+  var mat = newMatrix[PietColor](maxColorNumber + 1+2,maxColorNumber+1)
+  for c in 0..maxColorNumber:
+    mat[0,c] = c.PietColor
+    mat[1,c] = -1.PietColor
+    var colors = newSeq[tuple[val:int,color:PietColor]]()
+    for x in 0..maxColorNumber:
+      let dist = distance(x.PietColor,c.PietColor)
+      colors &= (dist,x.PietColor)
+    colors.sort((a,b)=>a.val-b.val)
+    for i,vc in colors:
+      mat[2+i,c] = vc.color
+  echo mat.toConsole()
 
 var colorTable = newSeqWith(PietColor.high.int+1,newSeqWith(Order.high.int+1,-1))
 proc getNextColor(i:int,operation:Order):int = #i.PietColor.decideNext(operation)
@@ -438,13 +462,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             var val = f.val
             for i in 0..<8:
               let (bX,bY) = endPos.getNextPos(dp,cc)
-              if not isIn(bX,bY) or mat[bX,bY] == BlackNumber:
-                if i mod 2 == 0 : cc.toggle()
-                else: dp.toggle(1)
-                continue
-              # 黒を置かなければならないので
-              if mat.isDecided(bX,bY) : return
-              mat.update(val,bX,bY,BlackNumber)
+              if isIn(bX,bY):
+                # 黒をおかなければならない
+                if mat[bX,bY] != BlackNumber: return
+                if not mat.isDecided(bX,bY):
+                  mat.update(val,bX,bY,BlackNumber)
+              if i mod 2 == 0 : cc.toggle()
+              else: dp.toggle(1)
             # 全方向巡りできた
             store(ord+1,(val,mat,f.x,f.y,dp,cc,f.fund.deepCopy()))
           )()
@@ -662,6 +686,7 @@ proc makeLocalRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
           result[x,y] = result[x-1,y]
 
 if isMainModule:
+
   if false:
     let orders = makeRandomOrders(20)
     let baseImg = makeRandomPietColorMatrix(64,1)
