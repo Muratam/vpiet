@@ -5,7 +5,7 @@ import pietize
 import curse
 import makegraph
 import sets
-# TODO: 一筆書きの制限削除
+# TODO: 一筆書きの制限のせいで終了できない！
 # エッジ(隣接色が同じ色の数)でマスク :: 0:変えてよい 1:それなりに 2: まあ 3:うーん 4:えー
 # 色関数(近い順に並べた表を作るとわかりやすい)/ PushFlag(次Pushと確定ならばサイズ調整する価値がある)
 # 次がPushを控えているからといってそのサイズじゃないといけない可能性は少ない!!
@@ -93,28 +93,65 @@ proc `$`(orders:seq[OrderAndArgs]):string =
     result &= " "
 
 # 色差関数
-proc distance(a,b:PietColor) : int =
-  let (ar,ag,ab) = a.toRGB()
-  let (br,bg,bb) = b.toRGB()
-  proc diff(x,y:uint8):int = abs(x.int-y.int)
-  let w =
-    if a == b: 0
-    elif a.nwb != None and b.nwb != None : 8
-    elif a.nwb != None or  b.nwb != None :
-      if a.nwb != None: 0 + a.light * (if b == BlackNumber:1 else:2)
-      else: 0 + b.light * (if a == BlackNumber:1 else:2)
-    elif a.hue == b.hue : 2 + abs(a.light - b.light)
-    else: 4 + abs(a.light - b.light)
-  return 2*diff(ar,br) + 4*diff(ag,bg) + 3*diff(ab,bb) + w * 256
-  # wikipediaの近似式
-  # proc sq(x:uint8):int = x.int * x.int
-  # let rr = 0.0 # (ar.int + br.int) / 512
-  # let dr = sq(ar-br).float
-  # let dg = sq(ag-bg).float
-  # let db = sq(ab-bb).float
-  # # rr = 0.0 とすれば同じ
-  # return ((2 + rr) * dr + 4 * dg + (3 - rr) * db).sqrt.int
-
+proc ciede2000(l1,a1,b1,l2,a2,b2:float):float{. importc: "CIEDE2000" header: "../src/ciede2000.h".}
+var ciede2000Table = newSeqWith(maxColorNumber+1, newSeqWith(maxColorNumber+1,-1))
+proc distanceByCIEDE2000(a,b:PietColor) : int =
+  if ciede2000Table[a][b] >= 0 : return ciede2000Table[a][b]
+  proc rgb2xyz(rgb:tuple[r,g,b:uint8]): tuple[x,y,z:float] =
+    # http://w3.kcua.ac.jp/~fujiwara/infosci/colorspace/colorspace2.html
+    proc lin(x:uint8) : float =
+      let nx = x.float / 255
+      if nx > 0.04045 : pow((nx+0.055)/1.055,2.4)
+      else: nx / 12.92
+    let (r,g,b) = rgb
+    let (lr,lg,lb) = (r.lin, g.lin, b.lin)
+    return (
+      lr * 0.4124 + lg * 0.3576 + lb * 0.1805,
+      lr * 0.2126 + lg * 0.7152 + lb * 0.0722,
+      lr * 0.0193 + lg * 0.1192 + lb * 0.9505)
+  proc xyz2lab(xyz:tuple[x,y,z:float]): tuple[l,a,b:float] =
+    # http://w3.kcua.ac.jp/~fujiwara/infosci/colorspace/colorspace3.html
+    proc lin(x:float) : float =
+      if x > 0.008856 : pow(x, 1.0/3.0)
+      else: 7.787 * x + 0.1379
+    let (x,y,z) = xyz
+    let (nx,ny,nz) = (lin(x / 0.95047), lin(y / 1.0 ), lin(z / 1.08883))
+    return (116 * ny - 16,500 * (nx - ny),200 * (ny - nz))
+    # proc byCIEDE2000(lab1,lab2:tuple[l,a,b:float]) : float =
+    #   proc getC(a,b:float) : float = (a*a+b*b).sqrt
+    #   proc getADash(a,c:float) : float =
+    #     return a * ( 1.5 - 0.5 * sqrt(pow(c,7)/(pow(c,7)+pow(25,7))))
+    #   proc getDeltaAndHalf(a,b:float):tuple[d,h:float] = (b - a,(b+a) / 2)
+    #   proc getH(b,ap:float):float = (360.0 + arctan2(b,ap) / (2*PI) ) mod 360.0
+    #   proc getDeltaH(h1,h2:float):float =
+    #     let absH = abs(h1-h2)
+    #     let dH = h2 - h1
+    #     return
+    #       if absH < 180 : dH
+    #       elif h2 < h1 : dH + 360
+    #       else: dH - 360
+    #   let (l1,a1,b1) = lab1
+    #   let (l2,a2,b2) = lab2
+    #   let (c1,c2) = (getC(a1,b1),getC(a2,b2))
+    #   let (dc,hc) = getDeltaAndHalf(c1,c2)
+    #   let (dl,hl) = getDeltaAndHalf(l1,l2)
+    #   let (ap1,ap2) = (a1.getADash(hc),a2.getADash(hc))
+    #   let (cp1,cp2) = (getC(ap1,b1),getC(ap2,b2))
+    #   let (dcp,hcp) = getDeltaAndHalf(cp1,cp2)
+    #   let (h1,h2) = (getH(b1,ap1),getH(b2,ap2))
+    #   let dh = getDeltaH(h1,h2)
+    #
+    # dh
+    # dH,H
+    # T
+    # SL
+    # RT
+  let (l1,a1,b1) = a.toRGB().rgb2xyz().xyz2lab()
+  let (l2,a2,b2) = b.toRGB().rgb2xyz().xyz2lab()
+  let distance = ciede2000(l1,a1,b1,l2,a2,b2).int * 5
+  ciede2000Table[a][b] = distance
+  return ciede2000Table[a][b]
+proc distance(a,b:PietColor) : int = distanceByCIEDE2000(a,b)
 proc showDistance() =
   var mat = newMatrix[PietColor](maxColorNumber + 1+2,maxColorNumber+1)
   for c in 0..maxColorNumber:
@@ -128,6 +165,7 @@ proc showDistance() =
     for i,vc in colors:
       mat[2+i,c] = vc.color
   echo mat.toConsole()
+  quit()
 
 var colorTable = newSeqWith(PietColor.high.int+1,newSeqWith(Order.high.int+1,-1))
 proc getNextColor(i:int,operation:Order):int = #i.PietColor.decideNext(operation)
@@ -460,7 +498,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             var cc = f.cc
             var mat = f.mat.deepCopy()
             var val = f.val
-            for i in 0..<8:
+            for i in 0..<2: # TODO: 大嘘
               let (bX,bY) = endPos.getNextPos(dp,cc)
               if isIn(bX,bY):
                 # 黒をおかなければならない
