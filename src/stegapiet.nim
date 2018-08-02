@@ -6,8 +6,7 @@ import curse
 import makegraph
 import sets
 import colordiff
-# TODO: 一筆書きの制限のせいで終了できない！
-# エッジ(隣接色が同じ色の数)でマスク :: 0:変えてよい 1:それなりに 2: まあ 3:うーん 4:えー
+
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
 
@@ -608,6 +607,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         minVal = val
       return minIndex
     doAssert fronts[^1].len() > 0
+    block:
+      createDir("pietresult")
+      for i,f in fronts[^1]:
+        var mat = f.mat.deepCopy()
+        discard mat.embedNotdecided()
+        mat.save("pietresult/{i}piet.png".fmt(),codelSize=10,open=false)
     result = fronts[^1][findEmbeddedMinIndex()].mat
     echo "before:result :\n",result.toConsole()
     discard result.embedNotdecided()
@@ -691,9 +696,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,1000)
-    stegano.save("./piet.png")
-
-
-  # baseImg.save()
-  # stegano.save()
+    let stegano = quasiStegano2D(orders,baseImg,10)
+    stegano.save("./piet.png",codelSize=10)

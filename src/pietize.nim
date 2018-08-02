@@ -107,15 +107,18 @@ proc labeling*(filename:string): seq[seq[OrderAndArgs]] =
 
 
 
-proc save*(self:Matrix[PietColor],filename:string="/tmp/piet.png") =
-  var pixels = newString(3 * self.width * self.height)
+proc save*(self:Matrix[PietColor],filename:string="/tmp/piet.png",codelSize:int=1,open:bool=true) =
+  var pixels = newString(3 * self.width * self.height * codelSize * codelSize)
   for x in 0..<self.width:
     for y in 0..<self.height:
       let (r,g,b)= self[x,y].toRGB()
-      pixels[3 * (x + y * self.width) + 0] = cast[char](r)
-      pixels[3 * (x + y * self.width) + 1] = cast[char](g)
-      pixels[3 * (x + y * self.width) + 2] = cast[char](b)
-  discard savePNG24(filename,pixels,self.width,self.height)
-  discard startProcess("/usr/bin/open",args=[filename],options={})
-
-
+      for xi in 0..<codelSize:
+        for yi in 0..<codelSize:
+          let nx = x * codelSize + xi
+          let ny = y * codelSize + yi
+          let pos = nx + ny * self.width*codelSize
+          pixels[3 * pos + 0] = cast[char](r)
+          pixels[3 * pos + 1] = cast[char](g)
+          pixels[3 * pos + 2] = cast[char](b)
+  discard savePNG24(filename,pixels,self.width*codelSize,self.height*codelSize)
+  if open : discard startProcess("/usr/bin/open",args=[filename],options={})
