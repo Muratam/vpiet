@@ -7,6 +7,21 @@ import makegraph
 import sets
 import colordiff
 
+#TODO: 以前の実装ではマスのサイズが不定なので微妙にムラがあるように見える
+#    : 埋めたブロック数が全て同じ者同士で比較したほうがよいにきまっている
+#    : stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
+#    : [マスを増やす]という操作のために今のブロックの位置配列を持っておいて,
+#    : 1. (fund=[]) -> 命令を進める (push:サイズが同じ時のみ)
+#    : 2. マスを増やす -> 今のブロックの位置配列から全方向に
+#    :    -> 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
+#    : 3. fundを変える -> 命令を進める時とおなじ
+#    : 4. 白をDPCC方向に追加(挙動が大変なので壁にぶつからないように)
+#    : 5. 黒をポチっと置く
+#    : 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
+#    ** この方法だと最後に埋めていく作業のときも,変化の無いように配置できるのでおとく
+
+# 分岐: if / while のみの分岐とすればまだまともなものが作れるのではないか??
+
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
 
@@ -574,6 +589,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # stdout.write progress;stdout.flushFile
       break
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+    if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
+      break
   block: # 成果
     proc embedNotdecided(self:var Matrix[PietColor]) : int =
       let initalMatrix = self.deepCopy()
@@ -682,7 +699,6 @@ if isMainModule:
         if n <= 0 and ord != Push : return (ord,@[])
         else: return (ord,@[$n])
       let orders = @[
-        # 80 73 69 84
         d(Push,3),d(Dup),d(Mul),d(Dup),d(Mul),d(Push,1),d(Sub),d(Dup),d(OutC),
         d(Push,3),d(Dup),d(Push,1),d(Add),d(Add),d(Sub),d(Dup),d(OutC),
         d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC),
@@ -696,5 +712,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,10)
+    let stegano = quasiStegano2D(orders,baseImg)
     stegano.save("./piet.png",codelSize=10)

@@ -9,3 +9,9 @@ proc getPietColor*(img:PNGResult,start:int): PietColor =
     g = cast[uint8](img.data[start+1])
     b = cast[uint8](img.data[start+2])
   return toPietColor(r,g,b)
+proc getRGB*(img:PNGResult,start:int): tuple[r,g,b:uint8] =
+  let
+    r = cast[uint8](img.data[start])
+    g = cast[uint8](img.data[start+1])
+    b = cast[uint8](img.data[start+2])
+  return (r,g,b)
