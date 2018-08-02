@@ -5,9 +5,9 @@ type
   EightDirection*[T] = tuple[rightL,rightR,downL,downR,leftL,leftR,upL,upR:T]
 proc newCC*():CC = CCLeft
 proc newDP*():DP = DPRight
+proc newEightDirection*[T](t:T):EightDirection[T] = (t,t,t,t,t,t,t,t)
 proc toggle*(cc: var CC) = cc = (not cc.bool).CC
 proc toggle*(dp:var DP,n:int = 1) = dp = ((dp.int + n) mod 4).DP
-
 proc getdXdY*(dp:DP): tuple[x,y:int] =
   return case dp:
     of DPRight: (1,0)

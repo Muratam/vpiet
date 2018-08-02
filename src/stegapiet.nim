@@ -6,24 +6,11 @@ import curse
 import makegraph
 import sets
 import colordiff
-
-#TODO: 以前の実装ではマスのサイズが不定なので微妙にムラがあるように見える
-#    : 埋めたブロック数が全て同じ者同士で比較したほうがよいにきまっている
-#    : stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
-#    : [マスを増やす]という操作のために今のブロックの位置配列を持っておいて,
-#    : 1. (fund=[]) -> 命令を進める (push:サイズが同じ時のみ)
-#    : 2. マスを増やす -> 今のブロックの位置配列から全方向に
-#    :    -> 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
-#    : 3. fundを変える -> 命令を進める時とおなじ
-#    : 4. 白をDPCC方向に追加(挙動が大変なので壁にぶつからないように)
-#    : 5. 黒をポチっと置く
-#    : 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
-#    ** この方法だと最後に埋めていく作業のときも,変化の無いように配置できるのでおとく
-
 # 分岐: if / while のみの分岐とすればまだまともなものが作れるのではないか??
 
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
+const dxdys = [(0,1),(0,-1),(1,0),(-1,0)]
 
 proc getInfo(self: Matrix[PietColor],x,y:int) : tuple[endPos:EightDirection[Pos],size:int] =
   # 現在位置から次の8方向を探索して返す
@@ -273,7 +260,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
     echo orders
 
-proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
+proc quasiStegano2DPrototype*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
   const maxEmbedColor = 20
   type Val = tuple[val:int,mat:Matrix[PietColor],x,y:int,dp:DP,cc:CC,fund:Stack[int],nextIsPush:bool]
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
@@ -638,6 +625,199 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
     echo orders
 
+
+proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
+  # 以前の実装ではマスのサイズが不定なので微妙にムラがあるように見える
+  # 埋めたブロック数がほぼ(交差のせい)同じ者同士で比較したほうがよいにきまっている
+  # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
+
+  #  この方法だと最後に埋めていく作業のときも,変化の無いように配置できるのでおとく
+  # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
+  # 色に元画像の出現割合に応じて重み付けするとお得?
+
+  type
+    Pos = tuple[x,y:int]
+    # マスを増やすという操作のために今のブロックの位置配列を持っておく
+    UsedInfo = tuple[used:bool,pos:Pos]
+    BlockInfoObject = object
+      # 有彩色以外では color以外の情報は参考にならないことに注意
+      # -> deepcopy時に白や黒はサボれる
+      endPos:EightDirection[UsedInfo]
+      size:int
+      color:PietColor
+      sameBlocks: seq[Pos]
+    BlockInfo = ref BlockInfoObject
+    NodeObject = object
+      val,x,y:int
+      mat:Matrix[BlockInfo]
+      dp:DP
+      cc:CC
+      fund:Stack[int]
+    Node = ref NodeObject not nil
+  proc deepBICopy(mat:Matrix[BlockInfo]) : Matrix[BlockInfo] =
+    proc box[T](x:T): ref T =
+      new(result)
+      result[] = x
+    result = newMatrix[BlockInfo](mat.width,mat.height)
+    for x in 0..<mat.width:
+      for y in 0..<mat.height:
+        let here = mat[x,y]
+        if here == nil : continue
+        if here.color >= chromMax :
+          result[x,y] = mat[x,y]
+          continue
+        let firstBlock = here.sameBlocks[0]
+        if x == firstBlock.x and y == firstBlock.y :
+          result[x,y] = box(here[])
+    for x in 0..<mat.width:
+      for y in 0..<mat.height:
+        let here = mat[x,y]
+        if here == nil : continue
+        if here.color >= chromMax : continue
+        let firstBlock = here.sameBlocks[0]
+        if x == firstBlock.x and y == firstBlock.y : continue
+        result[x,y] = result[firstBlock.x,firstBlock.y]
+
+
+
+  proc toConsole(self:Matrix[BlockInfo]) : string =
+    var mat = newMatrix[PietColor](self.width,self.height)
+    for x in 0..<self.width:
+      for y in 0..<self.height:
+        mat[x,y] = if self[x,y] == nil : -1  else: self[x,y].color
+    return mat.toConsole()
+  proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
+    # 新たに(隣接のない前提で)1マス追記
+    new(result)
+    let pos :Pos= (x,y)
+    result.endPos = newEightDirection((false,pos))
+    result.size = 1
+    result.color = color
+    result.sameBlocks = @[pos]
+  let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
+  let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
+  proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int]) : Node =
+    new(result)
+    result.val = val
+    result.x = x
+    result.y = y
+    result.mat = mat
+    result.dp = dp
+    result.cc = cc
+    result.fund = fund
+  proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
+  proc checkAdjasts(mat:Matrix[BlockInfo],x,y:int,color:PietColor) : seq[BlockInfo] =
+    # color と同じ色で隣接しているものを取得
+    result = @[]
+    for dxdy in dxdys:
+      let (dx,dy) = dxdy
+      let (nx,ny) = (x + dx,y + dy)
+      if not isIn(nx,ny) : continue
+      if mat[nx,ny] == nil : continue
+      if mat[nx,ny].color != color : continue
+      if mat[nx,ny] in result: continue # 大丈夫...?
+      result &= mat[nx,ny]
+  proc updateVal(val:var int,x,y:int,color:PietColor) =
+    val += distance(color,base[x,y])
+  proc updateMat(mat:var Matrix[BlockInfo],x,y:int,color:PietColor) :bool =
+    doAssert mat[x,y] == nil
+    if color == WhiteNumber:
+      mat[x,y] = whiteBlockInfo
+      return true
+    if color == BlackNumber:
+      mat[x,y] = blackBlockInfo
+      return true
+    let adjasts = mat.checkAdjasts(x,y,color)
+    case adjasts.len():
+    of 0: # 新規
+      mat[x,y] = newBlockInfo(x,y,color)
+      return true
+    of 1: # くっつき
+      mat[x,y] = adjasts[0]
+      return true
+    else:
+      doAssert(false,"ブロック結合!!")
+      return false
+  proc update(mat:var Matrix[BlockInfo],val:var int,x,y:int,color:PietColor) : bool =
+    val.updateVal(x,y,color)
+    return mat.updateMat(x,y,color)
+  # TODO: fundのレベルに応じて分ける方が自然 :: [order][fundlevel]
+  const maxFundLevel = 5
+  var fronts = newSeqWith(orders.len()+1,newSeq[Node]())
+  var completedMin = EPS
+  block: # 最初の1マスは白以外
+    for c in 0..<chromMax:
+      var initMat = newMatrix[BlockInfo](base.width,base.height) # 全てnil
+      var val = 0
+      if not initMat.update(val,0,0,c.PietColor) : quit("yabee")
+      fronts[0] &= newNode(val,0,0,initMat,newDP(),newCC(),newStack[int]())
+  for progress in 0..<(base.width * base.height):
+    # top()が一番雑魚
+    var nexts = newSeqWith( orders.len()+1,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val))
+    proc storedWorstVal(ord:int):int =
+      if nexts[ord].len() < maxFrontierNum : return min(EPS,completedMin)
+      if nexts[ord].len() == 0 : return min(EPS,completedMin)
+      return min(nexts[ord].top().val,completedMin)
+    proc store(node:Node,ord:int) =
+      if storedWorstVal(ord) <= node.val : return
+      nexts[ord].push(node)
+      if nexts[ord].len() > maxFrontierNum :
+        discard nexts[ord].pop()
+    for ord in 0..<fronts.len():
+      proc extendBlock(f:Node) =
+        let here = f.mat[f.x,f.y]
+        if here.color == WhiteNumber : return
+        for b in here.sameBlocks:
+          for dxdy in dxdys:
+            let (dx,dy) = dxdy
+            let (nx,ny) = (b.x + dx,b.y + dy)
+            if not isIn(nx,ny) : continue
+            let ext = f.mat[nx,ny]
+            if ext != nil : continue
+            var newMat = f.mat.deepBICopy()
+            var newVal = f.val
+            if not newMat.update(newVal,nx,ny,here.color) : continue
+            newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy()).store(ord)
+
+      let front = fronts[ord]
+      if ord == orders.len():
+        for f in front:
+          completedMin .min= f.val
+          nexts[ord].push(f)
+        continue
+      for f in front:
+        f.extendBlock()
+        # # 白をDPCC方向に追加(挙動が大変なので壁にぶつからないように)
+        # if f.mat[f.x,f.y].color == WhiteNumber:
+        #   # 有彩色に乗り上げ
+        #   discard
+        # else:
+        #   # 命令を進める
+        #   if order.operation == Push :
+        #     discard
+        #   else:
+        #     discard
+        #   # マスを増やす
+
+        #   # 黒ポチ
+        #   # 1. (fund=[]) -> 命令を進める (push:サイズが同じ時のみ)
+        #   # 2. マスを増やす -> 今のブロックの位置配列から全方向に
+        #   #    -> 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
+        #   # 3. fundを変える -> 命令を進める時とおなじ
+        #   # 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
+        #   discard
+    let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
+    echo fronts.mapIt(it.len())
+    echo nextItems.mapIt(it.len())
+    echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
+    fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+    break
+    # if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
+    #   break
+
+
+
+  return base
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
   proc getValidOrders():seq[Order] =
@@ -713,4 +893,4 @@ if isMainModule:
     echo orders
     echo baseImg.toConsole()
     let stegano = quasiStegano2D(orders,baseImg)
-    stegano.save("./piet.png",codelSize=10)
+    # stegano.save("./piet.png",codelSize=10)
