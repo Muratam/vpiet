@@ -720,6 +720,21 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc updateVal(val:var int,x,y:int,color:PietColor) =
     val += distance(color,base[x,y])
   proc updateMat(mat:var Matrix[BlockInfo],x,y:int,color:PietColor) :bool =
+    proc updateEndPos(e:var EightDirection[UsedInfo]) : bool =
+      # 使用済みのところを更新してしまうと駄目(false)
+      result = true
+      let newPos = (x,y)
+      template update(dir) =
+        if dir.used : return false
+        dir.pos = newPos
+      if y < e.upR.pos.y or y == e.upR.pos.y and x > e.upR.pos.x : e.upR.update()
+      if y < e.upL.pos.y or y == e.upL.pos.y and x < e.upL.pos.x : e.upL.update()
+      if y > e.downR.pos.y or y == e.downR.pos.y and x < e.downR.pos.x : e.downR.update()
+      if y > e.downL.pos.y or y == e.downL.pos.y and x > e.downL.pos.x : e.downL.update()
+      if x < e.leftR.pos.x or x == e.leftR.pos.x and y < e.leftR.pos.y : e.leftR.update()
+      if x < e.leftL.pos.x or x == e.leftL.pos.x and y > e.leftL.pos.y : e.leftL.update()
+      if x > e.rightR.pos.x or x == e.rightR.pos.x and y > e.rightR.pos.y : e.rightR.update()
+      if x > e.rightL.pos.x or x == e.rightL.pos.x and y < e.rightL.pos.y : e.rightL.update()
     doAssert mat[x,y] == nil
     if color == WhiteNumber:
       mat[x,y] = whiteBlockInfo
@@ -734,6 +749,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       return true
     of 1: # くっつき
       mat[x,y] = adjasts[0]
+      mat[x,y].sameBlocks &= (x,y)
+      mat[x,y].size += 1
+      if not mat[x,y].endPos.updateEndPos() : return false
       return true
     else:
       doAssert(false,"ブロック結合!!")
@@ -766,7 +784,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     for ord in 0..<fronts.len():
       proc extendBlock(f:Node) =
         let here = f.mat[f.x,f.y]
-        if here.color == WhiteNumber : return
+        if here.color >= chromMax : return
         for b in here.sameBlocks:
           for dxdy in dxdys:
             let (dx,dy) = dxdy
@@ -793,12 +811,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         #   discard
         # else:
         #   # 命令を進める
-        #   if order.operation == Push :
-        #     discard
-        #   else:
-        #     discard
-        #   # マスを増やす
-
         #   # 黒ポチ
         #   # 1. (fund=[]) -> 命令を進める (push:サイズが同じ時のみ)
         #   # 2. マスを増やす -> 今のブロックの位置配列から全方向に
@@ -811,7 +823,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     echo nextItems.mapIt(it.len())
     echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
-    break
+    if progress > 2 :break
     # if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
     #   break
 
