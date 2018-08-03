@@ -219,9 +219,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   # 埋めたブロック数がほぼ(交差のせい)同じ者同士で比較したほうがよいにきまっている
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
-
+  doAssert base.width < int16.high and base.height < int16.high
   type
-    Pos = tuple[x,y:int]
+    Pos = tuple[x,y:int16] # 25:390MB -> 25:268MB # メモリが 2/3で済む(int8ではほぼ変化なし)
     # マスを増やすという操作のために今のブロックの位置配列を持っておく
     UsedInfo = tuple[used:bool,pos:Pos]
     BlockInfoObject = object
@@ -275,7 +275,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
     # 新たに(隣接のない前提で)1マス追記
     new(result)
-    let pos :Pos= (x,y)
+    let pos :Pos= (x.int16,y.int16)
     result.endPos = newEightDirection((false,pos))
     result.size = 1
     result.color = color
@@ -320,7 +320,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     proc updateEndPos(e:var EightDirection[UsedInfo],x,y:int) : bool =
       # 使用済みのところを更新してしまうと駄目(false)
       result = true
-      let newPos = (x,y)
+      let newPos = (x.int16,y.int16)
       template update(dir) =
         if dir.used : return false
         dir.pos = newPos
@@ -347,7 +347,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     else:
       # とりあえず0番に結合
       mat[x,y] = adjasts[0]
-      mat[x,y].sameBlocks &= (x,y)
+      mat[x,y].sameBlocks &= (x.int16,y.int16)
       mat[x,y].size += 1
       for adjast in adjasts: # ついでに全部結合していいやつかチェック
         if adjast.sizeFix : return false
