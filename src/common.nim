@@ -50,7 +50,7 @@ proc `$`*[T](self:Stack[T]) : string = $(self.data[..self.index])
 
 # 指定した行列
 type Matrix*[T] = ref object
-  data:seq[T]
+  data*:seq[T]
   width*,height*: int
 proc newMatrix*[T](width,height:int):Matrix[T] =
   new(result)
