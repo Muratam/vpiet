@@ -215,8 +215,9 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
-  # 以前の実装ではマスのサイズが不定なので微妙にムラがあるように見える
-  # 埋めたブロック数がほぼ(交差のせい)同じ者同士で比較したほうがよいにきまっている
+  # maxFrontierNum = 100(低クオリティ) ~ 500(高クオリティ)
+  # N = maxFrontierNum * orders.len() + base.size(for deepcopy?)
+  # メモリ:O(N),計算時間:O(N)
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -426,6 +427,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     var nexts = newSeqWith( orders.len()+1,
       newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
     proc storedWorstVal(fundLevel:int,ord:int):int =
+      if fundLevel >= maxFundLevel : return -1 # 越えたときも-1で簡易的に弾く
       if nexts[ord][fundLevel].len() < maxFunds[fundLevel] : return min(EPS,completedMin)
       if nexts[ord][fundLevel].len() == 0 : return min(EPS,completedMin)
       return min(nexts[ord][fundLevel].top().val,completedMin)
@@ -452,6 +454,17 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if front.len() > 0 : completedMin = front.mapIt(it.val).min()
         continue
       let order = orders[ord]
+      proc tryUpdate(f:Node,x,y:int,color:PietColor,dFund,dOrd:int) : tuple[ok:bool,val:int,mat:Matrix[BlockInfo]]=
+        block: # 一回試してみる
+          var tmpVal = f.val
+          updateVal(tmpVal,x,y,color)
+          if storedWorstVal(f.fund.len()+dFund,ord + dOrd) <= tmpVal :
+            return (false,-1,newMatrix[BlockInfo](0,0))
+        var newMat = f.mat.deepBICopy()
+        var newVal = f.val
+        if not newMat.update(newVal,x,y,color) :
+          return (false,newVal,newMatrix[BlockInfo](0,0))
+        return (true,newVal,newMat)
       proc extendBlock(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
@@ -462,9 +475,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             if not isIn(nx,ny) : continue
             let ext = f.mat[nx,ny]
             if ext != nil : continue
-            var newMat = f.mat.deepBICopy()
-            var newVal = f.val
-            if not newMat.update(newVal,nx,ny,here.color) : continue
+            let (ok,newVal,newMat) = f.tryUpdate(nx,ny,here.color,0,0)
+            if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
       proc decide(f:Node,order:Order,dOrd:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
@@ -486,8 +498,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         var newVal = f.val
         if not newMat.update(newVal,nx,ny,color) : return
         var nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
-        if order == Push :
-          newMat[f.x,f.y].sizeFix = true
+        if order == Push : newMat[f.x,f.y].sizeFix = true
         if not nextNode.callback(): return
         nextNode.store(ord+dOrd)
       proc doOrder(f:Node) =
@@ -532,9 +543,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             return
           doAssert chromMax == WhiteNumber
           for c in 0..chromMax:
-            var newMat = f.mat.deepBICopy()
-            var newVal = f.val
-            if not newMat.update(newVal,nx,ny,c.PietColor) : continue
+            let (ok,newVal,newMat) = f.tryUpdate(nx,ny,c.PietColor,0,0)
+            if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
           return
