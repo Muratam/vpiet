@@ -7,7 +7,10 @@ import makegraph
 import sets
 import colordiff
 # 分岐: if / while のみの分岐とすればまだまともなものが作れるのではないか??
-
+#    : if :: 分岐した二箇所がうまくつながるように幅優先的に処理していき,
+#       : ⬇の重みは命令が進むにつれてでかくなるようにすればきれい??
+#       : 二人が近いほどコストが低いように設定すればつながりやすい??
+#    : while :: 指定した点に近いほどコストが低いように設定すればつながりやすい??
 const chromMax = hueMax * lightMax
 const EPS = 1e12.int
 const dxdys = [(0,1),(0,-1),(1,0),(-1,0)]
@@ -632,7 +635,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let maxes =  fronts.mapIt(it.mapIt(it.len()).max())
     echo "progress: ",progress
     echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
-    if getTotalMem() div 1024 div 1024 > 700 : break # WARN: GC...
+    if progress > orders.len() * 3:  break # WARN: GC...
     echo maxes
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
@@ -783,5 +786,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,200)
+    let stegano = quasiStegano2D(orders,baseImg,500)
     stegano.save("./piet.png",codelSize=10)
