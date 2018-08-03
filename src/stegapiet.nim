@@ -790,27 +790,36 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
 
 
   # TODO: fundのレベルに応じて分ける方が自然 :: [order][fundlevel]
-  const maxFundLevel = 5
-  var fronts = newSeqWith(orders.len()+1,newSeq[Node]())
+  const maxFundLevel = 2
+  var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
   var completedMin = EPS
   block: # 最初の1マスは白以外
     for c in 0..<chromMax:
       var initMat = newMatrix[BlockInfo](base.width,base.height) # 全てnil
       var val = 0
       if not initMat.update(val,0,0,c.PietColor) : quit("yabee")
-      fronts[0] &= newNode(val,0,0,initMat,newDP(),newCC(),newStack[int]())
+      fronts[0][0] &= newNode(val,0,0,initMat,newDP(),newCC(),newStack[int]())
   for progress in 0..<(base.width * base.height):
     # top()が一番雑魚
-    var nexts = newSeqWith( orders.len()+1,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val))
-    proc storedWorstVal(ord:int):int =
-      if nexts[ord].len() < maxFrontierNum : return min(EPS,completedMin)
-      if nexts[ord].len() == 0 : return min(EPS,completedMin)
-      return min(nexts[ord].top().val,completedMin)
+    var nexts = newSeqWith( orders.len()+1,
+      newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
+    proc storedWorstVal(fundLevel:int,ord:int):int =
+      if nexts[ord][fundLevel].len() < maxFrontierNum : return min(EPS,completedMin)
+      if nexts[ord][fundLevel].len() == 0 : return min(EPS,completedMin)
+      return min(nexts[ord][fundLevel].top().val,completedMin)
     proc store(node:Node,ord:int) =
-      if storedWorstVal(ord) <= node.val : return
-      nexts[ord].push(node)
-      if nexts[ord].len() > maxFrontierNum :
-        discard nexts[ord].pop()
+      let fundLevel = node.fund.len()
+      if fundLevel >= maxFundLevel : return
+      if storedWorstVal(fundLevel,ord) <= node.val : return
+      nexts[ord][fundLevel].push(node)
+      if nexts[ord][fundLevel].len() > maxFrontierNum :
+        discard nexts[ord][fundLevel].pop()
+    proc getFront(ord:int) : seq[Node] =
+      result = @[]
+      for fr in fronts[ord]:
+        for f in fr:
+          result &= f
+
     for ord in 0..<fronts.len():
       let order = orders[ord]
       proc extendBlock(f:Node) =
@@ -920,11 +929,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             node = it
             return true)
         )()
-      let front = fronts[ord]
+      let front = getFront(ord)
       if ord == orders.len():
         for f in front:
           completedMin .min= f.val
-          nexts[ord].push(f)
+          nexts[ord][f.fund.len()].push(f)
         continue
       for f in front:
         f.extendBlock()
@@ -967,18 +976,29 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             let next = it.fund.pop()
             it.fund.push(if next > top : 1 else:0)
         #   # 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
-    let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
-    fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
+    let nextItems = (proc():seq[seq[seq[Node]]]=
+      result = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
+      for i in 0..<nexts.len():
+        var next = nexts[i]
+        for j in 0..<next.len():
+          result[i][j] &= nexts[i][j].items()
+    )()
+    fronts = nextItems.mapIt(it.mapIt(it.sorted((a,b)=>a.val-b.val)))
     for i in 0..<fronts.len():
       let front = fronts[^(1+i)]
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
-      echo front[0].mat.toConsole(),front[0].val,"\n"
+      if front[0].len() > 0:
+        echo front[0][0].mat.toConsole(),front[0][0].val,"\n"
       echo "progress: ",progress
-      echo fronts.mapIt(it.len())
-      echo nextItems.mapIt(it.len())
-      echo nextItems.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()])
+      # echo fronts.mapIt(it.len())
+      echo fronts.mapIt(it.mapIt(it.len()))
+      echo getTotalMem() div 1024 div 1024
+      echo getOccupiedMem() div 1024 div 1024
+      echo getFreeMem() div 1024 div 1024
+      # echo nextItems.mapIt(it.mapIt(it.len()))
+      # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
       break
@@ -1031,6 +1051,9 @@ proc makeLocalRandomPietColorMatrix*(width,height:int) : Matrix[PietColor] =
           result[x,y] = result[x-1,y]
 
 if isMainModule:
+  echo getTotalMem() div 1024 div 1024
+  echo getOccupiedMem() div 1024 div 1024
+  echo getFreeMem() div 1024 div 1024
 
   if false:
     let orders = makeRandomOrders(20)
