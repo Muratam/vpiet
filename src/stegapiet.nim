@@ -216,7 +216,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   # 埋めたブロック数がほぼ(交差のせい)同じ者同士で比較したほうがよいにきまっている
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
-  # WARN: 色に元画像の出現割合に応じて重み付けするとお得?
 
   type
     Pos = tuple[x,y:int]
@@ -302,8 +301,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if mat[nx,ny].color != color : continue
       if mat[nx,ny] in result: continue # 大丈夫...?
       result &= mat[nx,ny]
+  let weights = (proc():seq[float] =
+    # 重み(1.0 ~ 2.0)
+    var weights = newSeqWith(maxColorNumber+1,base.width * base.height)
+    for x in 0..<base.width:
+      for y in 0..<base.height:
+        weights[base[x,y]] += 1
+    return weights.mapIt((base.width*base.height).float * 2.0 / it.float )
+  )()
   proc updateVal(val:var int,x,y:int,color:PietColor) =
-    val += distance(color,base[x,y])
+    val += distance(color,base[x,y]
+    # 色に元画像の出現割合に応じて重み付けするとお得?
+    # val += (distance(color,base[x,y]).float * weights[color.int]).int
   proc updateMat(mat:var Matrix[BlockInfo],x,y:int,color:PietColor) :bool =
     proc updateEndPos(e:var EightDirection[UsedInfo],x,y:int) : bool =
       # 使用済みのところを更新してしまうと駄目(false)
@@ -611,17 +620,17 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       let front = fronts[^(1+i)]
       if front.len() == 0 : continue
       # 最後のプロセス省略
-      if progress > 0 and nextItems[0..^2].allIt(it.len() == 0) : break
       if front[0].len() > 0:
         echo front[0][0].mat.toConsole(),front[0][0].val,"\n"
-      echo "progress: ",progress
-      echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
+        break
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
-      break
     let maxes =  fronts.mapIt(it.mapIt(it.len()).max())
+    echo "progress: ",progress
+    echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
+    if getTotalMem() div 1024 div 1024 > 700 : break # WARN: GC...
     echo maxes
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
