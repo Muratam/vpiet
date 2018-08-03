@@ -310,7 +310,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     return weights.mapIt((base.width*base.height).float * 2.0 / it.float )
   )()
   proc updateVal(val:var int,x,y:int,color:PietColor) =
-    val += distance(color,base[x,y]
+    val += distance(color,base[x,y])
     # 色に元画像の出現割合に応じて重み付けするとお得?
     # val += (distance(color,base[x,y]).float * weights[color.int]).int
   proc updateMat(mat:var Matrix[BlockInfo],x,y:int,color:PietColor) :bool =
