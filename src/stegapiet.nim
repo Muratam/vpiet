@@ -790,7 +790,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
 
 
   # TODO: fundのレベルに応じて分ける方が自然 :: [order][fundlevel]
-  const maxFundLevel = 2
+  const maxFundLevel = 4
+  let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + it))
   var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
   var completedMin = EPS
   block: # 最初の1マスは白以外
@@ -804,7 +805,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     var nexts = newSeqWith( orders.len()+1,
       newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
     proc storedWorstVal(fundLevel:int,ord:int):int =
-      if nexts[ord][fundLevel].len() < maxFrontierNum : return min(EPS,completedMin)
+      if nexts[ord][fundLevel].len() < maxFunds[fundLevel] : return min(EPS,completedMin)
       if nexts[ord][fundLevel].len() == 0 : return min(EPS,completedMin)
       return min(nexts[ord][fundLevel].top().val,completedMin)
     proc store(node:Node,ord:int) =
@@ -812,7 +813,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if fundLevel >= maxFundLevel : return
       if storedWorstVal(fundLevel,ord) <= node.val : return
       nexts[ord][fundLevel].push(node)
-      if nexts[ord][fundLevel].len() > maxFrontierNum :
+      if nexts[ord][fundLevel].len() > maxFunds[fundLevel] :
         discard nexts[ord][fundLevel].pop()
     proc getFront(ord:int) : seq[Node] =
       result = @[]
@@ -931,9 +932,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         )()
       let front = getFront(ord)
       if ord == orders.len():
+        if front.len() > 0 : completedMin = front.mapIt(it.val).max() + 1
         for f in front:
-          completedMin .min= f.val
-          nexts[ord][f.fund.len()].push(f)
+          f.store(ord)
+          # nexts[ord][f.fund.len()].push(f)
+        if front.len() > 0 : completedMin = front.mapIt(it.val).min()
         continue
       for f in front:
         f.extendBlock()
@@ -992,21 +995,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front[0].len() > 0:
         echo front[0][0].mat.toConsole(),front[0][0].val,"\n"
       echo "progress: ",progress
-      # echo fronts.mapIt(it.len())
-      echo fronts.mapIt(it.mapIt(it.len()))
-      echo getTotalMem() div 1024 div 1024
-      echo getOccupiedMem() div 1024 div 1024
-      echo getFreeMem() div 1024 div 1024
+      echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
       break
-
-    if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
+    let maxes =  fronts.mapIt(it.mapIt(it.len()).max())
+    echo maxes
+    if maxes[^1] == maxFrontierNum and maxes[^2] == 0 and maxes[^3] == 0 :
       break
-
-
 
   return base
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
@@ -1086,5 +1084,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,500)
+    let stegano = quasiStegano2D(orders,baseImg,50)
     # stegano.save("./piet.png",codelSize=10)
