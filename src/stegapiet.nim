@@ -770,8 +770,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     endPos[cc,dp] = (true,endPos[cc,dp].pos)
     return endPos.getNextPos(dp,cc)
 
-  proc searchNotDecided(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
-    # 次に壁ではない場所にいけるなら ok
+  proc searchNotVisited(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+    # 次に行ったことのない壁ではない場所にいけるなら ok
     doAssert mat[x,y] != nil and mat[x,y].color < chromMax
     var dp = startDP
     var cc = startCC
@@ -783,11 +783,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if i mod 2 == 0 : cc.toggle()
         else: dp.toggle(1)
         continue
-      if mat[nX,nY] == nil :
-        doAssert(not used)
-        return (true,dp,cc)
-      return
+      if used : return
+      return (true,dp,cc)
     return
+
+
 
   # TODO: fundのレベルに応じて分ける方が自然 :: [order][fundlevel]
   const maxFundLevel = 5
@@ -832,11 +832,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
         var newMat = f.mat.deepBICopy()
-        # WARN: 交差を一旦考えない
-        # 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
-        let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
+        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
         if not ok : return
         let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+        if newMat[nx,ny] != nil :
+          let next = newMat[nx,ny]
+          if next.color != color : return
+          # 交差した時は,ループに陥らないよう,今のままのdpccで行けるかチェック
+          if next.endPos[cc,dp].used : return
+          var nextNode = newNode(f.val,nx,ny,newMat,dp,cc,f.fund.deepCopy())
+          if not nextNode.callback(): return
+          nextNode.store(ord+dOrd)
+          return
         var newVal = f.val
         if not newMat.update(newVal,nx,ny,color) : return
         var nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
@@ -848,9 +855,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if here.color >= chromMax : return
         if f.fund.len() > 0 : return
         if order.operation == Terminate:
-          doAssert(false,"Terminate!!!")
+          f.decide(Push,1) # WARN: おおきな嘘
+          return
         if order.operation == Push and order.args[0].parseInt() != here.size : return
         f.decide(order.operation,1)
+
       proc goWhite(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color == WhiteNumber:
@@ -858,12 +867,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           let (nx,ny) = (f.x+dx,f.y+dy)
           if not isIn(nx,ny) : return
           if f.mat[nx,ny] != nil:
-            if f.mat[nx,ny].color == BlackNumber : return # 悪しき白->黒
-            if f.mat[nx,ny].color == WhiteNumber :
+            let next = f.mat[nx,ny]
+            if next.color == BlackNumber : return # 悪しき白->黒
+            if next.color == WhiteNumber :
               let nextNode = newNode(f.val,nx,ny,f.mat.deepBICopy(),f.dp,f.cc,f.fund.deepCopy())
               nextNode.store(ord)
               return
-            # WARN: 有彩色への交差を一旦考えない
+            # 交差した時は,ループに陥らないよう,今のままのdpccで行けるかチェック
+            if next.endPos[f.cc,f.dp].used : return
+            var nextNode = newNode(f.val,nx,ny,f.mat.deepBICopy(),f.dp,f.cc,f.fund.deepCopy())
+            nextNode.store(ord)
             return
           doAssert chromMax == WhiteNumber
           for c in 0..chromMax:
@@ -875,10 +888,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           return
         else:
           var newMat = f.mat.deepBICopy()
-          let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
+          let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
           if not ok : return
           let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
           var newVal = f.val
+          if newMat[nx,ny] != nil : return
           if not newMat.update(newVal,nx,ny,WhiteNumber) : return
           let nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
           nextNode.store(ord)
@@ -887,10 +901,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return # 白で壁にぶつからないように
         var newMat = f.mat.deepBICopy()
-        let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
+        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
         if not ok : return
         let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
         var newVal = f.val
+        if newMat[nx,ny] != nil : return
         if not newMat.update(newVal,nx,ny,BlackNumber) : return
         let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
         nextNode.store(ord)
@@ -899,14 +914,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         (proc =
           let here = f.mat[f.x,f.y]
           if here.color >= chromMax : return
-          f.decide(Push,0, proc(node:var Node) :bool=
+          f.decide(order,0, proc(node:var Node) :bool=
             let it{.inject.} = node # ref なのであとで代入すればいいよね
             operation
             node = it
             return true)
         )()
-
-
       let front = fronts[ord]
       if ord == orders.len():
         for f in front:
@@ -970,9 +983,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # stdout.write progress;stdout.flushFile
       break
 
-    # if progress > 2 :break
-    # if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
-    #   break
+    if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
+      break
 
 
 
