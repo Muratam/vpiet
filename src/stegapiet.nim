@@ -786,10 +786,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if used : return
       return (true,dp,cc)
     return
-
-
-
-  # TODO: fundのレベルに応じて分ける方が自然 :: [order][fundlevel]
   const maxFundLevel = 4
   let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + it))
   var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
@@ -863,10 +859,23 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       proc doOrder(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
-        if f.fund.len() > 0 : return
         if order.operation == Terminate:
-          f.decide(Push,1) # WARN: おおきな嘘
+          var newMat = f.mat.deepBICopy()
+          var dp = f.dp
+          var cc = f.cc
+          var newVal = f.val
+          for i in 0..<8:
+            let (nX,nY) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+            if isIn(nX,nY):
+              if newMat[nX,nY] == nil :
+                if not newMat.update(newVal,nX,nY,BlackNumber) : return
+              elif newMat[nX,nY].color != BlackNumber: return
+            if i mod 2 == 0 : cc.toggle()
+            else: dp.toggle(1)
+          let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
+          nextNode.store(ord+1)
           return
+        if f.fund.len() > 0 : return
         if order.operation == Push and order.args[0].parseInt() != here.size : return
         f.decide(order.operation,1)
 
@@ -1003,10 +1012,78 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       break
     let maxes =  fronts.mapIt(it.mapIt(it.len()).max())
     echo maxes
-    if maxes[^1] == maxFrontierNum and maxes[^2] == 0 and maxes[^3] == 0 :
+    if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
+  block: # 成果
+    var front = fronts[^1][0] # WARN: fund > 0でも...
+    proc embedNotdecided(f:var Node) =
+      # どこにも隣接していないやつを埋める
+      for x in 0..<f.mat.width:
+        for y in 0..<f.mat.height:
+          if f.mat[x,y] != nil: continue
+          let color = base[x,y]
+          let adjast = (proc(f:var Node) :bool =
+            for dxdy in dxdys:
+              let (dx,dy) = dxdy
+              let (nx,ny) = (x+dx,y+dy)
+              if not isIn(nx,ny) : continue
+              if f.mat[nx,ny] == nil : continue
+              if f.mat[nx,ny].color == color : return true
+            return false
+          )(f)
+          if color <= chromMax and adjast : continue
+          if not f.mat.update(f.val,x,y,color): quit("yabeeyo")
+      # 隣接しているので一番近い色を埋める
+      for x in 0..<f.mat.width:
+        for y in 0..<f.mat.height:
+          if f.mat[x,y] != nil: continue
+          let color = base[x,y]
+          var newMat = f.mat.deepBICopy()
+          var newVal = f.val
+          if newMat.update(newVal,x,y,color) :
+            f.mat = newMat
+            f.val = newVal
+            continue
+          type Try = tuple[success:bool,mat:Matrix[BlockInfo],val:int]
+          var tries = newSeq[Try]()
+          for c in 0..<chromMax:
+            var success = false
+            var newMat = f.mat.deepBICopy()
+            var newVal = f.val
+            if newMat.update(newVal,x,y,c.PietColor) :
+              success = true
+            tries &= (success,newMat,newVal)
+          tries = tries.filterIt(it.success).sorted((a,b)=> a.val - b.val)
+          f.mat = tries[0].mat
+          f.val = tries[0].val
 
-  return base
+    proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
+      result = newMatrix[PietColor](self.width,self.height)
+      for x in 0..<self.width:
+        for y in 0..<self.height:
+          if self[x,y] == nil : result[x,y] = -1
+          else: result[x,y] = self[x,y].color
+
+    proc findEmbeddedMinIndex():int =
+      var minIndex = 0
+      var minVal = EPS
+      for i,f in front:
+        front[i].embedNotdecided()
+        if minVal < front[i].val : continue
+        minIndex = i
+        minVal = front[i].val
+      return minIndex
+
+
+    doAssert front.len() > 0
+    let mats = front.mapIt(it.mat.deepBICopy())
+    let index = findEmbeddedMinIndex()
+    result = front[index].mat.toPietColorMap()
+    echo "result: before\n",mats[index].toPietColorMap().toConsole()
+    echo "result :\n",result.toConsole()
+    echo "base   :\n",base.toConsole()
+    echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+    echo orders
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
   randomize()
   proc getValidOrders():seq[Order] =
@@ -1084,5 +1161,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,50)
+    let stegano = quasiStegano2D(orders,baseImg,10)
     # stegano.save("./piet.png",codelSize=10)

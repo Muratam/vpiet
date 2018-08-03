@@ -60,4 +60,5 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
       result.hue = now.hue + h
       result.light = now.light + l
       return
+  echo now,order
   doAssert false,"cant decide color"
