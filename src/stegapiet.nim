@@ -301,14 +301,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if mat[nx,ny].color != color : continue
       if mat[nx,ny] in result: continue # 大丈夫...?
       result &= mat[nx,ny]
-  let weights = (proc():seq[float] =
-    # 重み(1.0 ~ 2.0)
-    var weights = newSeqWith(maxColorNumber+1,base.width * base.height)
-    for x in 0..<base.width:
-      for y in 0..<base.height:
-        weights[base[x,y]] += 1
-    return weights.mapIt((base.width*base.height).float * 2.0 / it.float )
-  )()
+  # let weights = (proc():seq[float] =
+  #   # 重み(1.0 ~ 2.0)
+  #   var weights = newSeqWith(maxColorNumber+1,base.width * base.height)
+  #   for x in 0..<base.width:
+  #     for y in 0..<base.height:
+  #       weights[base[x,y]] += 1
+  #   return weights.mapIt((base.width*base.height).float * 2.0 / it.float )
+  # )()
   proc updateVal(val:var int,x,y:int,color:PietColor) =
     val += distance(color,base[x,y])
     # 色に元画像の出現割合に応じて重み付けするとお得?
@@ -372,8 +372,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       connect(0,1)
       connect(0,2)
       return true
+    of 4:
+      connect(0,1)
+      connect(0,2)
+      connect(0,3)
+      return true
     else:
-      echo "4結合???"
       return false
   proc update(mat:var Matrix[BlockInfo],val:var int,x,y:int,color:PietColor) : bool =
     val.updateVal(x,y,color)
@@ -435,7 +439,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         for f in fr:
           result &= f
 
-    for ord in 0..<fronts.len():
+    for ord in 0..orders.len():
+      let front = getFront(ord)
+      if ord == orders.len():
+        if front.len() > 0 : completedMin = front.mapIt(it.val).max() + 1
+        for f in front:
+          f.store(ord)
+          # nexts[ord][f.fund.len()].push(f)
+        if front.len() > 0 : completedMin = front.mapIt(it.val).min()
+        continue
       let order = orders[ord]
       proc extendBlock(f:Node) =
         let here = f.mat[f.x,f.y]
@@ -475,7 +487,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           newMat[f.x,f.y].sizeFix = true
         if not nextNode.callback(): return
         nextNode.store(ord+dOrd)
-
       proc doOrder(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
@@ -498,7 +509,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if f.fund.len() > 0 : return
         if order.operation == Push and order.args[0].parseInt() != here.size : return
         f.decide(order.operation,1)
-
       proc goWhite(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color == WhiteNumber:
@@ -535,7 +545,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           if not newMat.update(newVal,nx,ny,WhiteNumber) : return
           let nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
           nextNode.store(ord)
-
       proc pushBlack(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return # 白で壁にぶつからないように
@@ -548,7 +557,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if not newMat.update(newVal,nx,ny,BlackNumber) : return
         let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
         nextNode.store(ord)
-
       template doFundIt(f:Node,order:Order,operation:untyped) : untyped =
         (proc =
           let here = f.mat[f.x,f.y]
@@ -559,15 +567,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             node = it
             return true)
         )()
-      let front = getFront(ord)
-      if ord == orders.len():
-        if front.len() > 0 : completedMin = front.mapIt(it.val).max() + 1
-        for f in front:
-          f.store(ord)
-          # nexts[ord][f.fund.len()].push(f)
-        if front.len() > 0 : completedMin = front.mapIt(it.val).min()
-        continue
-      for f in front:
+
+
+      for i,f in front:
         f.extendBlock()
         f.doOrder()
         f.pushBlack()
