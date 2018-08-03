@@ -214,9 +214,10 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
     echo orders
 
-proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500) :Matrix[PietColor]=
-  # 以前の実装ではマスのサイズが不定なので微妙にムラがあるように見える
-  # 埋めたブロック数がほぼ(交差のせい)同じ者同士で比較したほうがよいにきまっている
+proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 100) :Matrix[PietColor]=
+  # maxFrontierNum = 100(低クオリティ) ~ 500(高クオリティ)
+  # N = maxFrontierNum + base.size(for deepcopy?)
+  # メモリ:O(N),計算時間:O(N)
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -263,9 +264,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let firstBlock = here.sameBlocks[0]
         if x == firstBlock.x and y == firstBlock.y : continue
         result[x,y] = result[firstBlock.x,firstBlock.y]
-
-
-
   proc toConsole(self:Matrix[BlockInfo]) : string =
     var mat = newMatrix[PietColor](self.width,self.height)
     for x in 0..<self.width:
@@ -304,14 +302,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if mat[nx,ny].color != color : continue
       if mat[nx,ny] in result: continue # 大丈夫...?
       result &= mat[nx,ny]
-  # let weights = (proc():seq[float] =
-  #   # 重み(1.0 ~ 2.0)
-  #   var weights = newSeqWith(maxColorNumber+1,base.width * base.height)
-  #   for x in 0..<base.width:
-  #     for y in 0..<base.height:
-  #       weights[base[x,y]] += 1
-  #   return weights.mapIt((base.width*base.height).float * 2.0 / it.float )
-  # )()
   proc updateVal(val:var int,x,y:int,color:PietColor) =
     val += distance(color,base[x,y])
     # 色に元画像の出現割合に応じて重み付けするとお得?
@@ -385,17 +375,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc update(mat:var Matrix[BlockInfo],val:var int,x,y:int,color:PietColor) : bool =
     val.updateVal(x,y,color)
     return mat.updateMat(x,y,color)
-
   proc getNextPos(endPos:EightDirection[UsedInfo],dp:DP,cc:CC) : tuple[x,y:int] =
     let (x,y) = endPos[cc,dp].pos
     let (dX,dY) = dp.getdXdY()
     return (x + dX,y + dY)
-
   proc useNextPos(endPos:var EightDirection[UsedInfo],dp:DP,cc:CC) : tuple[x,y:int] =
     endPos[cc,dp] = (true,endPos[cc,dp].pos)
     return endPos.getNextPos(dp,cc)
-
-  proc searchNotVisited(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+  proc searchNotVisited(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC,dirty:bool=true) : tuple[ok:bool,dp:DP,cc:CC]=
     # 次に行ったことのない壁ではない場所にいけるなら ok
     doAssert mat[x,y] != nil and mat[x,y].color < chromMax
     var dp = startDP
@@ -403,7 +390,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     result = (false,dp,cc)
     for i in 0..<8:
       let used = mat[x,y].endPos[cc,dp].used
-      let (nX,nY) = mat[x,y].endPos.useNextPos(dp,cc)
+      let (nX,nY) =
+        if dirty : mat[x,y].endPos.useNextPos(dp,cc)
+        else : mat[x,y].endPos.getNextPos(dp,cc)
       if not isIn(nX,nY) or (mat[nX,nY] != nil and mat[nX,nY].color == BlackNumber):
         if i mod 2 == 0 : cc.toggle()
         else: dp.toggle(1)
@@ -411,8 +400,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if used : return
       return (true,dp,cc)
     return
-  const maxFundLevel = 4
-  let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + it))
+
   var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
   var completedMin = EPS
   block: # 最初の1マスは白以外
@@ -425,8 +413,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     # top()が一番雑魚
     var nexts = newSeqWith( orders.len()+1,
       newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
-    proc storedWorstVal(fundLevel:int,ord:int):int =
-      if nexts[ord][fundLevel].len() < maxFunds[fundLevel] : return min(EPS,completedMin)
+    let maxNonNilFrontIndex = toSeq(0..<fronts.len()).filterIt(fronts[it].mapIt(it.len()).sum() > 0).max()
+    let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + it))
+    proc getMaxFunds(fundLevel,ord:int):int =
+      maxFunds[fundLevel] #* (ord - maxNonNilFrontIndex + maxTrackBackOrderLen) div maxTrackBackOrderLen
+    proc storedWorstVal(fundLevel,ord:int):int =
+      if fundLevel >= maxFundLevel : return -1 # 越えたときも-1で簡易的に弾く
+      if nexts[ord][fundLevel].len() < getMaxFunds(fundLevel,ord) : return min(EPS,completedMin)
       if nexts[ord][fundLevel].len() == 0 : return min(EPS,completedMin)
       return min(nexts[ord][fundLevel].top().val,completedMin)
     proc store(node:Node,ord:int) =
@@ -434,15 +427,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if fundLevel >= maxFundLevel : return
       if storedWorstVal(fundLevel,ord) <= node.val : return
       nexts[ord][fundLevel].push(node)
-      if nexts[ord][fundLevel].len() > maxFunds[fundLevel] :
+      if nexts[ord][fundLevel].len() > getMaxFunds(fundLevel,ord)  :
         discard nexts[ord][fundLevel].pop()
     proc getFront(ord:int) : seq[Node] =
       result = @[]
       for fr in fronts[ord]:
         for f in fr:
           result &= f
-
     for ord in 0..orders.len():
+      if ord < maxNonNilFrontIndex - maxTrackBackOrderLen : continue
       let front = getFront(ord)
       if ord == orders.len():
         if front.len() > 0 : completedMin = front.mapIt(it.val).max() + 1
@@ -452,6 +445,33 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if front.len() > 0 : completedMin = front.mapIt(it.val).min()
         continue
       let order = orders[ord]
+      proc tryUpdate(f:Node,x,y:int,color:PietColor,dOrd,dFund:int) : tuple[ok:bool,val:int,mat:Matrix[BlockInfo]] =
+        template mistaken() : untyped = (false,-1,newMatrix[BlockInfo](0,0))
+        block: # 一回試してみる
+          var tmpVal = f.val
+          updateVal(tmpVal,x,y,color)
+          if storedWorstVal(f.fund.len()+dFund,ord + dOrd) <= tmpVal : return mistaken
+        var newMat = f.mat.deepBICopy()
+        var newVal = f.val
+        if not newMat.update(newVal,x,y,color) : return mistaken
+        return (true,newVal,newMat)
+      proc tryUpdateNotVisited(f:Node,color:PietColor,dOrd,dFund:int,onlyNil:bool = false,onlySameColor:bool=false,onlyNotUsedCCDP:bool=false) : bool =
+        # 一回試してみる(+nilなら更新した時のコストもチェック)
+        let (ok,dp,cc) = f.mat.searchNotVisited(f.x,f.y,f.dp,f.cc,false)
+        if not ok : return false
+        let (nx,ny) = f.mat[f.x,f.y].endPos.getNextPos(dp,cc)
+        if f.mat[nx,ny] == nil:
+          var tmpVal = f.val
+          updateVal(tmpVal,nx,ny,color)
+          if storedWorstVal(f.fund.len()+dFund,ord + dOrd) <= tmpVal : return false
+          return true
+        # そもそも空いて無いと駄目
+        if onlyNil : return false
+        # 交差した時だと思うけれども同じ色しか駄目
+        if onlySameColor and f.mat[nx,ny].color != color : return false
+        # 交差した時に,ループに陥らないよう,今のままのdpccで行けるかチェック
+        if onlyNotUsedCCDP and f.mat[nx,ny].endPos[cc,dp].used : return false
+        return true
       proc extendBlock(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
@@ -462,23 +482,21 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             if not isIn(nx,ny) : continue
             let ext = f.mat[nx,ny]
             if ext != nil : continue
-            var newMat = f.mat.deepBICopy()
-            var newVal = f.val
-            if not newMat.update(newVal,nx,ny,here.color) : continue
+            let (ok,newVal,newMat) = f.tryUpdate(nx,ny,here.color,0,0)
+            if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
-      proc decide(f:Node,order:Order,dOrd:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
+      proc decide(f:Node,order:Order,dOrd,dFund:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
+        if not f.tryUpdateNotVisited(color,dOrd,dFund,onlySameColor=true,onlyNotUsedCCDP=true) : return
         var newMat = f.mat.deepBICopy()
         let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
-        if not ok : return
+        if not ok : quit("yabee")
         let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
         if newMat[nx,ny] != nil :
           let next = newMat[nx,ny]
-          if next.color != color : return
-          # 交差した時は,ループに陥らないよう,今のままのdpccで行けるかチェック
-          if next.endPos[cc,dp].used : return
+          if next.color != color or next.endPos[cc,dp].used : quit("yabee")
           var nextNode = newNode(f.val,nx,ny,newMat,dp,cc,f.fund.deepCopy())
           if not nextNode.callback(): return
           nextNode.store(ord+dOrd)
@@ -486,8 +504,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         var newVal = f.val
         if not newMat.update(newVal,nx,ny,color) : return
         var nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
-        if order == Push :
-          newMat[f.x,f.y].sizeFix = true
+        if order == Push : newMat[f.x,f.y].sizeFix = true
         if not nextNode.callback(): return
         nextNode.store(ord+dOrd)
       proc doOrder(f:Node) =
@@ -511,7 +528,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           return
         if f.fund.len() > 0 : return
         if order.operation == Push and order.args[0].parseInt() != here.size : return
-        f.decide(order.operation,1)
+        f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color == WhiteNumber:
@@ -532,83 +549,83 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             return
           doAssert chromMax == WhiteNumber
           for c in 0..chromMax:
-            var newMat = f.mat.deepBICopy()
-            var newVal = f.val
-            if not newMat.update(newVal,nx,ny,c.PietColor) : continue
+            let (ok,newVal,newMat) = f.tryUpdate(nx,ny,c.PietColor,0,0)
+            if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
           return
         else:
+          if not f.tryUpdateNotVisited(WhiteNumber,0,0,onlyNil=true) : return
           var newMat = f.mat.deepBICopy()
           let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
-          if not ok : return
+          if not ok : quit("yabee")
           let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
           var newVal = f.val
-          if newMat[nx,ny] != nil : return
+          if newMat[nx,ny] != nil : quit("yabee")
           if not newMat.update(newVal,nx,ny,WhiteNumber) : return
           let nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
           nextNode.store(ord)
       proc pushBlack(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return # 白で壁にぶつからないように
+        if not f.tryUpdateNotVisited(BlackNumber,0,0,onlyNil=true) : return
         var newMat = f.mat.deepBICopy()
         let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
-        if not ok : return
+        if not ok : quit("yabee")
         let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
         var newVal = f.val
-        if newMat[nx,ny] != nil : return
+        if newMat[nx,ny] != nil : quit("yabee")
         if not newMat.update(newVal,nx,ny,BlackNumber) : return
         let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
         nextNode.store(ord)
-      template doFundIt(f:Node,order:Order,operation:untyped) : untyped =
+      template doFundIt(f:Node,order:Order,dFund:int,operation:untyped) : untyped =
         (proc =
           let here = f.mat[f.x,f.y]
           if here.color >= chromMax : return
-          f.decide(order,0, proc(node:var Node) :bool=
+          f.decide(order,0,dFund,proc(node:var Node) :bool=
             let it{.inject.} = node # ref なのであとで代入すればいいよね
             operation
             node = it
             return true)
         )()
 
-
       for i,f in front:
         f.extendBlock()
         f.doOrder()
         f.pushBlack()
         f.goWhite()
-        f.doFundIt(Push): it.fund.push(it.mat[it.x,it.y].size)
+        f.doFundIt(Push,1): it.fund.push(it.mat[it.x,it.y].size)
         if f.fund.len() > 0:
-          f.doFundIt(Pop): discard it.fund.pop()
-          f.doFundIt(Pointer): it.dp.toggle(it.fund.pop())
-          f.doFundIt(Switch):
+          f.doFundIt(Pop,-1): discard it.fund.pop()
+          f.doFundIt(Pointer,-1): it.dp.toggle(it.fund.pop())
+          f.doFundIt(Switch,-1):
             if it.fund.pop() mod 2 == 1 : it.cc.toggle()
-          f.doFundIt(Not) : it.fund.push(if it.fund.pop() == 0: 1 else: 0)
-          f.doFundIt(Dup) : it.fund.push(it.fund.top())
+          f.doFundIt(Not,0) : it.fund.push(if it.fund.pop() == 0: 1 else: 0)
+          f.doFundIt(Dup,1) : it.fund.push(it.fund.top())
         if f.fund.len() > 1:
-          f.doFundIt(Add) :
+          f.doFundIt(Add,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             it.fund.push(next + top)
-          f.doFundIt(Sub) :
+          f.doFundIt(Sub,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             it.fund.push(next - top)
-          f.doFundIt(Mul) :
+          f.doFundIt(Mul,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             it.fund.push(next * top)
-          f.doFundIt(Div) :
+          f.doFundIt(Div,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             if top == 0 : return false
             it.fund.push(next div top)
-          f.doFundIt(Mod) :
+          f.doFundIt(Mod,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             if top == 0 : return false
             it.fund.push(next mod top)
-          f.doFundIt(Greater) :
+          f.doFundIt(Greater,-1) :
             let top = it.fund.pop()
             let next = it.fund.pop()
             it.fund.push(if next > top : 1 else:0)
@@ -632,11 +649,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
-    let maxes =  fronts.mapIt(it.mapIt(it.len()).max())
+    let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
     echo "progress: ",progress
     echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
     if progress > orders.len() * 3:  break # WARN: GC...
     echo maxes
+    # echo fronts.mapIt(it.mapIt(it.len()))
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
   block: # 成果
