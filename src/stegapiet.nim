@@ -754,8 +754,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       mat[x,y].size += 1
       if not mat[x,y].endPos.updateEndPos() : return false
       return true
-    else:
-      doAssert(false,"ブロック結合!!")
+    else: # WARN: ブロック結合とか難しすぎるしやめやめ(ただし結構に起こりうる!!)
+      # echo "ブロック結合!!!"
       return false
   proc update(mat:var Matrix[BlockInfo],val:var int,x,y:int,color:PietColor) : bool =
     val.updateVal(x,y,color)
@@ -777,12 +777,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     var cc = startCC
     result = (false,dp,cc)
     for i in 0..<8:
+      let used = mat[x,y].endPos[cc,dp].used
       let (nX,nY) = mat[x,y].endPos.useNextPos(dp,cc)
       if not isIn(nX,nY) or (mat[nX,nY] != nil and mat[nX,nY].color == BlackNumber):
         if i mod 2 == 0 : cc.toggle()
         else: dp.toggle(1)
         continue
-      if mat[nX,nY] == nil : return (true,dp,cc)
+      if mat[nX,nY] == nil :
+        doAssert(not used)
+        return (true,dp,cc)
       return
     return
 
@@ -823,7 +826,23 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             var newMat = f.mat.deepBICopy()
             var newVal = f.val
             if not newMat.update(newVal,nx,ny,here.color) : continue
-            newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy()).store(ord)
+            let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
+            nextNode.store(ord)
+      proc decide(f:Node,order:Order,dOrd:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
+        let here = f.mat[f.x,f.y]
+        let color = here.color.getNextColor(order).PietColor
+        var newMat = f.mat.deepBICopy()
+        # WARN: 交差を一旦考えない
+        # 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
+        let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
+        if not ok : return
+        let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+        var newVal = f.val
+        if not newMat.update(newVal,nx,ny,color) : return
+        var nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
+        if not nextNode.callback(): return
+        nextNode.store(ord+dOrd)
+
       proc doOrder(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
@@ -831,16 +850,61 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if order.operation == Terminate:
           doAssert(false,"Terminate!!!")
         if order.operation == Push and order.args[0].parseInt() != here.size : return
-        let nextColor = here.color.getNextColor(order.operation).PietColor
+        f.decide(order.operation,1)
+      proc goWhite(f:Node) =
+        let here = f.mat[f.x,f.y]
+        if here.color == WhiteNumber:
+          let (dx,dy) = f.dp.getdXdY()
+          let (nx,ny) = (f.x+dx,f.y+dy)
+          if not isIn(nx,ny) : return
+          if f.mat[nx,ny] != nil:
+            if f.mat[nx,ny].color == BlackNumber : return # 悪しき白->黒
+            if f.mat[nx,ny].color == WhiteNumber :
+              let nextNode = newNode(f.val,nx,ny,f.mat.deepBICopy(),f.dp,f.cc,f.fund.deepCopy())
+              nextNode.store(ord)
+              return
+            # WARN: 有彩色への交差を一旦考えない
+            return
+          doAssert chromMax == WhiteNumber
+          for c in 0..chromMax:
+            var newMat = f.mat.deepBICopy()
+            var newVal = f.val
+            if not newMat.update(newVal,nx,ny,c.PietColor) : continue
+            let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
+            nextNode.store(ord)
+          return
+        else:
+          var newMat = f.mat.deepBICopy()
+          let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
+          if not ok : return
+          let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+          var newVal = f.val
+          if not newMat.update(newVal,nx,ny,WhiteNumber) : return
+          let nextNode = newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy())
+          nextNode.store(ord)
+
+      proc pushBlack(f:Node) =
+        let here = f.mat[f.x,f.y]
+        if here.color >= chromMax : return # 白で壁にぶつからないように
         var newMat = f.mat.deepBICopy()
-        # 交差を一旦考えない
         let (ok,dp,cc) = newMat.searchNotDecided(f.x,f.y,f.dp,f.cc)
         if not ok : return
         let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
         var newVal = f.val
-        if not newMat.update(newVal,nx,ny,nextColor) : return
-        newNode(newVal,nx,ny,newMat,dp,cc,f.fund.deepCopy()).store(ord+1)
+        if not newMat.update(newVal,nx,ny,BlackNumber) : return
+        let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
+        nextNode.store(ord)
 
+      template doFundIt(f:Node,order:Order,operation:untyped) : untyped =
+        (proc =
+          let here = f.mat[f.x,f.y]
+          if here.color >= chromMax : return
+          f.decide(Push,0, proc(node:var Node) :bool=
+            let it{.inject.} = node # ref なのであとで代入すればいいよね
+            operation
+            node = it
+            return true)
+        )()
 
 
       let front = fronts[ord]
@@ -852,19 +916,44 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       for f in front:
         f.extendBlock()
         f.doOrder()
-        # # 白をDPCC方向に追加(挙動が大変なので壁にぶつからないように)
-        # if f.mat[f.x,f.y].color == WhiteNumber:
-        #   # 有彩色に乗り上げ
-        #   discard
-        # else:
-        #   # 命令を進める
-        #   # 黒ポチ
-        #   # 1. (fund=[]) -> 命令を進める (push:サイズが同じ時のみ)
-        #   # 2. マスを増やす -> 今のブロックの位置配列から全方向に
-        #   #    -> 交差した時のことも考えて,過去に使用した方向が前後で変化しないように増やす
-        #   # 3. fundを変える -> 命令を進める時とおなじ
+        f.pushBlack()
+        f.goWhite()
+        f.doFundIt(Push): it.fund.push(it.mat[it.x,it.y].size)
+        if f.fund.len() > 0:
+          f.doFundIt(Pop): discard it.fund.pop()
+          f.doFundIt(Pointer): it.dp.toggle(it.fund.pop())
+          f.doFundIt(Switch):
+            if it.fund.pop() mod 2 == 1 : it.cc.toggle()
+          f.doFundIt(Not) : it.fund.push(if it.fund.pop() == 0: 1 else: 0)
+          f.doFundIt(Dup) : it.fund.push(it.fund.top())
+        if f.fund.len() > 1:
+          f.doFundIt(Add) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            it.fund.push(next + top)
+          f.doFundIt(Sub) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            it.fund.push(next - top)
+          f.doFundIt(Mul) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            it.fund.push(next * top)
+          f.doFundIt(Div) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            if top == 0 : return false
+            it.fund.push(next div top)
+          f.doFundIt(Mod) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            if top == 0 : return false
+            it.fund.push(next mod top)
+          f.doFundIt(Greater) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            it.fund.push(if next > top : 1 else:0)
         #   # 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
-        #   discard
     let nextItems = toSeq(0..<nexts.len()).mapIt(nexts[it].items())
     fronts = nextItems.mapIt(it.sorted((a,b)=>a.val-b.val)[0..min(it.len(),maxFrontierNum)-1])
     for i in 0..<fronts.len():
@@ -881,7 +970,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # stdout.write progress;stdout.flushFile
       break
 
-    if progress > 2 :break
+    # if progress > 2 :break
     # if nextItems[^1].len() ==  maxFrontierNum and nextItems[^2].len() == 0 and nextItems[^3].len() == 0 :
     #   break
 
