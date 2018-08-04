@@ -241,45 +241,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       cc:CC
       fund:Stack[int]
     Node = ref NodeObject not nil
-  proc hashing(mat:Matrix[BlockInfo]) : Hash =
-    for d in mat.data:
-      result = result !& hash(if d == nil : -1 else: d.color)
-    result = !$result
-
-  proc deepBICopy(mat:Matrix[BlockInfo]) : Matrix[BlockInfo] =
-    proc box[T](x:T): ref T =
-      new(result)
-      result.endPos = x.endPos
-      result.size = x.size
-      result.color = x.color
-      result.sameBlocks = x.sameBlocks
-      result.sizeFix = x.sizeFix
-
-    result = newMatrix[BlockInfo](mat.width,mat.height)
-    for x in 0..<mat.width:
-      for y in 0..<mat.height:
-        let here = mat[x,y]
-        if here == nil : continue
-        if here.color >= chromMax :
-          result[x,y] = mat[x,y]
-          continue
-        let firstBlock = here.sameBlocks[0]
-        if x == firstBlock.x and y == firstBlock.y :
-          result[x,y] = box(here[])
-    for x in 0..<mat.width:
-      for y in 0..<mat.height:
-        let here = mat[x,y]
-        if here == nil : continue
-        if here.color >= chromMax : continue
-        let firstBlock = here.sameBlocks[0]
-        if x == firstBlock.x and y == firstBlock.y : continue
-        result[x,y] = result[firstBlock.x,firstBlock.y]
-  proc toConsole(self:Matrix[BlockInfo]) : string =
-    var mat = newMatrix[PietColor](self.width,self.height)
-    for x in 0..<self.width:
-      for y in 0..<self.height:
-        mat[x,y] = if self[x,y] == nil : -1  else: self[x,y].color
-    return mat.toConsole()
   proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
     # 新たに(隣接のない前提で)1マス追記
     new(result)
@@ -291,6 +252,48 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     result.sizeFix = false
   let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
   let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
+
+  proc hashing(mat:Matrix[BlockInfo]) : Hash =
+    for d in mat.data:
+      result = result !& hash(if d == nil : -1 else: d.color)
+    result = !$result
+
+  proc deepBICopy(mat:Matrix[BlockInfo]) : Matrix[BlockInfo] =
+    proc box(x:BlockInfo): BlockInfo =
+      new(result)
+      # コピーコンストラクタはおそすぎるので直代入
+      result.endPos = x.endPos
+      result.size = x.size
+      result.color = x.color
+      result.sameBlocks = x.sameBlocks
+      result.sizeFix = x.sizeFix
+
+    result = newMatrix[BlockInfo](mat.width,mat.height)
+    for i in 0..<mat.width * mat.height:
+      let here = mat.data[i]
+      if here == nil : continue
+      if here.color >= chromMax:
+        result.data[i] = here
+        continue
+      if here.sameBlocks.len() == 1 :
+        result.data[i] = box(here)
+        continue
+      let x = i mod mat.width
+      if x != here.sameBlocks[0].x : continue
+      let y = i div mat.width
+      if y != here.sameBlocks[0].y : continue
+      result.data[i] = box(here)
+      for j in 1..<here.sameBlocks.len():
+        result[here.sameBlocks[j].x,here.sameBlocks[j].y] = result.data[i]
+
+  proc toConsole(self:Matrix[BlockInfo]) : string =
+    var mat = newMatrix[PietColor](self.width,self.height)
+    for x in 0..<self.width:
+      for y in 0..<self.height:
+        mat[x,y] = if self[x,y] == nil : -1  else: self[x,y].color
+    return mat.toConsole()
+
+
   proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
     result = newMatrix[PietColor](self.width,self.height)
     for x in 0..<self.width:
@@ -675,10 +678,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if front[0].len() > 0:
-
-        for j in 0..<1.min(front[0].len()):
-          echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
-          echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+        # for j in 0..<1.min(front[0].len()):
+        #   echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
+        #   echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
         break
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
@@ -687,8 +689,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
     echo "progress: ",progress
     echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
-    echo stored.mapIt(it.mapIt(it.card).sum())
-    echo "->",maxes
+    # echo stored.mapIt(it.mapIt(it.card).sum())
+    # echo maxes
     # echo fronts.mapIt(it.mapIt(it.len()))
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
