@@ -51,7 +51,7 @@ proc distanceByCIEDE2000*(a,b:PietColor) : int =
   if ciede2000Table[a][b] >= 0 : return ciede2000Table[a][b]
   let (l1,a1,b1) = a.toRGB().rgb2xyz().xyz2lab()
   let (l2,a2,b2) = b.toRGB().rgb2xyz().xyz2lab()
-  let distance = ciede2000(l1,a1,b1,l2,a2,b2).int * 5
+  let distance = (ciede2000(l1,a1,b1,l2,a2,b2) * 100.0).int
   ciede2000Table[a][b] = distance
   return ciede2000Table[a][b]
 
