@@ -6,6 +6,7 @@ import curse
 import makegraph
 import sets
 import colordiff
+import hashes
 # 分岐: if / while のみの分岐とすればまだまともなものが作れるのではないか??
 #    : if :: 分岐した二箇所がうまくつながるように幅優先的に処理していき,
 #       : ⬇の重みは命令が進むにつれてでかくなるようにすればきれい??
@@ -241,6 +242,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       cc:CC
       fund:Stack[int]
     Node = ref NodeObject not nil
+  proc hashing(mat:Matrix[BlockInfo]) : Hash =
+    for d in mat.data:
+      result = result !& hash(if d == nil : -1 else: d.color)
+    result = !$result
+
   proc deepBICopy(mat:Matrix[BlockInfo]) : Matrix[BlockInfo] =
     proc box[T](x:T): ref T =
       new(result)
@@ -413,10 +419,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     # top()が一番雑魚
     var nexts = newSeqWith( orders.len()+1,
       newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
+    var stored = newSeqWith( orders.len()+1,
+      newSeqWith(maxFundLevel,initSet[Hash]()))
     let maxNonNilFrontIndex = toSeq(0..<fronts.len()).filterIt(fronts[it].mapIt(it.len()).sum() > 0).max()
     # 命令を実行できる人の方が偉いので強い重みをつける()
     let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + 4 * it))
-    # var storedTable =
     proc getMaxFunds(fundLevel,ord:int):int =
       maxFunds[fundLevel] * (ord - maxNonNilFrontIndex + maxTrackBackOrderLen) div maxTrackBackOrderLen
     proc storedWorstVal(fundLevel,ord:int):int =
@@ -428,9 +435,13 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       let fundLevel = node.fund.len()
       if fundLevel >= maxFundLevel : return
       if storedWorstVal(fundLevel,ord) <= node.val : return
+      let hashing = node.mat.hashing
+      if hashing in stored[ord][fundLevel]: return
       nexts[ord][fundLevel].push(node)
+      stored[ord][fundLevel].incl(hashing)
       if nexts[ord][fundLevel].len() > getMaxFunds(fundLevel,ord)  :
-        discard nexts[ord][fundLevel].pop()
+        let discarded = nexts[ord][fundLevel].pop()
+        # exclしなくてもいいかな
     proc getFront(ord:int) : seq[Node] =
       result = @[]
       for fr in fronts[ord]:
@@ -652,7 +663,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if front[0].len() > 0:
-        for j in 0..<10.min(front[0].len()):
+        for j in 0..<1.min(front[0].len()):
           echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
         break
       # echo nextItems.mapIt(it.mapIt(it.len()))
@@ -662,7 +673,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
     echo "progress: ",progress
     echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
-    echo maxes
+    echo stored.mapIt(it.mapIt(it.card).sum())
+    echo "->",maxes
     # echo fronts.mapIt(it.mapIt(it.len()))
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
