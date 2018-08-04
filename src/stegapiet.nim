@@ -316,7 +316,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     # 色に元画像の出現割合に応じて重み付けするとお得?
     # val += (distance(color,base[x,y]).float * weights[color.int]).int
   proc updateMat(mat:var Matrix[BlockInfo],x,y:int,color:PietColor) :bool =
-    proc updateEndPos(e:var EightDirection[UsedInfo],x,y:int) : bool =
+    proc canUpdateEndPos(e:var EightDirection[UsedInfo],x,y:int) : bool =
       # 使用済みのところを更新してしまうと駄目(false)
       result = true
       let newPos = (x.int16,y.int16)
@@ -350,19 +350,21 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       mat[x,y].size += 1
       for adjast in adjasts: # ついでに全部結合していいやつかチェック
         if adjast.sizeFix : return false
-      if not mat[x,y].endPos.updateEndPos(x,y) : return false
+      if not mat[x,y].endPos.canUpdateEndPos(x,y) : return false
     template connect(i0,i1) =
-      # 結合時のテスト
       for b in adjasts[i0].sameBlocks:
-        if adjasts[i1].endPos.updateEndPos(b.x,b.y) : return false
+        if not adjasts[i1].endPos.canUpdateEndPos(b.x,b.y) : return false
       for b in adjasts[i1].sameBlocks:
-        if adjasts[i0].endPos.updateEndPos(b.x,b.y) : return false
+        if not adjasts[i0].endPos.canUpdateEndPos(b.x,b.y) : return false
       for b in adjasts[i1].sameBlocks:
         mat[b.x,b.y] = adjasts[i0]
         mat[x,y].size += 1
         mat[x,y].sameBlocks &= (b.x,b.y)
         doAssert x != b.x or y != b.y
-
+      for ccdp in allCCDP():
+        let (cc,dp) = ccdp
+        let used = adjasts[i0].endPos[cc,dp].used or adjasts[i1].endPos[cc,dp].used
+        adjasts[i0].endPos[cc,dp] = (used,adjasts[i0].endPos[cc,dp].pos)
     case adjasts.len():
     of 0: return true
     of 1: return true
@@ -685,7 +687,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   block: # 成果
     var front = fronts[^1][0]
     proc embedNotdecided(f:var Node) =
-      if true: return # WARN:720-チルノ髪結合バグが有るのでいい感じにしたい(他の場所もバグあるかも)
+      # if true: return # WARN:720-チルノ髪結合バグが有るのでいい感じにしたい(他の場所もバグあるかも)
       # どこにも隣接していないやつを埋める
       let initMat = f.mat.deepBICopy()
       for x in 0..<f.mat.width:
@@ -697,11 +699,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
               let (dx,dy) = dxdy
               let (nx,ny) = (x+dx,y+dy)
               if not isIn(nx,ny) : continue
-              if f.mat[nx,ny] == nil : continue
-              if f.mat[nx,ny].color == color : return true
+              if initMat[nx,ny] == nil : continue
+              if initMat[nx,ny].color == color : return true
             return false
           )(f)
-          if color <= chromMax and adjast : continue
+          if color < chromMax and adjast : continue
           if not f.mat.update(f.val,x,y,color): quit("yabeeyo")
       # 隣接しているので一番近い色を埋める
       for x in 0..<f.mat.width:
@@ -744,6 +746,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     echo "result: before\n",mats[index].toPietColorMap().toConsole()
     echo "result :\n",result.toConsole(),front[index].val
     echo "base   :\n",base.toConsole()
+    echo mats[index].toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
     echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
     echo orders
 proc makeRandomOrders(length:int):seq[OrderAndArgs] =
@@ -823,5 +826,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,720)
+    let stegano = quasiStegano2D(orders,baseImg,10) # 720
     stegano.save("./piet.png",codelSize=10)
