@@ -217,7 +217,6 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
-  # TODO: matrix-pooling(deepBICopy時にはプールの中の物を使い,使用後のものはプールに入れる -> new-deleteのコストが減って高速化???)
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -231,7 +230,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       endPos:EightDirection[UsedInfo]
       size:int
       color:PietColor
-      sameBlocks: seq[Pos]
+      sameBlocks: seq[int]
       sizeFix : bool # Pushしたのでこのサイズでなくてはならない
     BlockInfo = ref BlockInfoObject
     NodeObject = object
@@ -244,11 +243,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
     # 新たに(隣接のない前提で)1マス追記
     new(result)
-    let pos :Pos= (x.int16,y.int16)
-    result.endPos = newEightDirection((false,pos))
+    let index = base.getI(x,y)
+    result.endPos = newEightDirection((false,(x.int16,y.int16)))
     result.size = 1
     result.color = color
-    result.sameBlocks = @[pos]
+    result.sameBlocks = @[index]
     result.sizeFix = false
   let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
   let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
@@ -278,13 +277,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if here.sameBlocks.len() == 1 :
         result.data[i] = box(here)
         continue
-      let x = i mod mat.width
-      if x != here.sameBlocks[0].x : continue
-      let y = i div mat.width
-      if y != here.sameBlocks[0].y : continue
+      if i != here.sameBlocks[0] : continue
       result.data[i] = box(here)
       for j in 1..<here.sameBlocks.len():
-        result[here.sameBlocks[j].x,here.sameBlocks[j].y] = result.data[i]
+        result.data[here.sameBlocks[j]] = result.data[i]
 
   proc toConsole(self:Matrix[BlockInfo]) : string =
     var mat = newMatrix[PietColor](self.width,self.height)
@@ -356,21 +352,22 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     else:
       # とりあえず0番に結合
       mat[x,y] = adjasts[0]
-      mat[x,y].sameBlocks &= (x.int16,y.int16)
+      mat[x,y].sameBlocks &= base.getI(x,y)
       mat[x,y].size += 1
       for adjast in adjasts: # ついでに全部結合していいやつかチェック
         if adjast.sizeFix : return false
       if not mat[x,y].endPos.canUpdateEndPos(x,y) : return false
     template connect(i0,i1) =
       for b in adjasts[i0].sameBlocks:
-        if not adjasts[i1].endPos.canUpdateEndPos(b.x,b.y) : return false
+        let (bx,by) = base.getXY(b)
+        if not adjasts[i1].endPos.canUpdateEndPos(bx,by) : return false
       for b in adjasts[i1].sameBlocks:
-        if not adjasts[i0].endPos.canUpdateEndPos(b.x,b.y) : return false
+        let (bx,by) = base.getXY(b)
+        if not adjasts[i0].endPos.canUpdateEndPos(bx,by) : return false
       for b in adjasts[i1].sameBlocks:
-        mat[b.x,b.y] = adjasts[i0]
+        mat.data[b] = adjasts[i0]
         mat[x,y].size += 1
-        mat[x,y].sameBlocks &= (b.x,b.y)
-        doAssert x != b.x or y != b.y
+        mat[x,y].sameBlocks &= b
       for ccdp in allCCDP():
         let (cc,dp) = ccdp
         let used = adjasts[i0].endPos[cc,dp].used or adjasts[i1].endPos[cc,dp].used
@@ -522,9 +519,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
         for b in here.sameBlocks:
+          let (bx,by) = base.getXY(b)
           for dxdy in dxdys:
             let (dx,dy) = dxdy
-            let (nx,ny) = (b.x + dx,b.y + dy)
+            let (nx,ny) = (bx + dx,by + dy)
             if not isIn(nx,ny) : continue
             let ext = f.mat[nx,ny]
             if ext != nil : continue
