@@ -43,6 +43,7 @@ proc `nwb=`*(c:var PietColor,val:NWB) =
     of None: c mod WhiteNumber
 
 proc decideOrder*(now,next:PietColor): Order =
+  if now.int < 0 or next.int < 0 : return ErrorOrder
   if next.nwb == Black or now.nwb == Black: return blackOrder # 解析のためには黒のこともある
   if next.nwb == White or now.nwb == White: return whiteOrder
   let hueDiff = (hueMax + (next.hue - now.hue) mod hueMax) mod hueMax

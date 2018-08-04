@@ -195,7 +195,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
         else: # Fund(白では詰めない)
           f.pushAs1D(hereColor.getNextColor(Push),0,1)
           if ord+1 < orders.len() and orders[ord+1].operation != Push:
-            f.pushAs1D(hereColor,0,0) # WARN: 次がPushというせいでNopなどもできない!!
+            f.pushAs1D(hereColor,0,0) # 次がPushというせいでNopなどもできない!!
           if f.fund > 0:
             f.pushAs1D(hereColor.getNextColor(Pop),0,-1)
             f.pushAs1D(hereColor.getNextColor(Not),0,0)
@@ -216,9 +216,6 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
-  # maxFrontierNum = 100(低クオリティ) ~ 500(高クオリティ)
-  # N = maxFrontierNum + base.size(for deepcopy?)
-  # メモリ:O(N),計算時間:O(N)
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -287,6 +284,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     result.sizeFix = false
   let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
   let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
+  proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
+    result = newMatrix[PietColor](self.width,self.height)
+    for x in 0..<self.width:
+      for y in 0..<self.height:
+        if self[x,y] == nil : result[x,y] = -1
+        else: result[x,y] = self[x,y].color
   proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int]) : Node =
     new(result)
     result.val = val
@@ -440,8 +443,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       nexts[ord][fundLevel].push(node)
       stored[ord][fundLevel].incl(hashing)
       if nexts[ord][fundLevel].len() > getMaxFunds(fundLevel,ord)  :
-        let discarded = nexts[ord][fundLevel].pop()
         # exclしなくてもいいかな
+        discard nexts[ord][fundLevel].pop()
     proc getFront(ord:int) : seq[Node] =
       result = @[]
       for fr in fronts[ord]:
@@ -518,7 +521,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             nextNode.store(ord)
             if order.operation == Terminate:
               nextNode.checkTerminate()
-              continue
       proc decide(f:Node,order:Order,dOrd,dFund:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
@@ -589,9 +591,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if here.color >= chromMax : return # 白で壁にぶつからないように
         if not f.tryUpdateNotVisited(BlackNumber,0,0,onlyNil=true) : return
         var newMat = f.mat.deepBICopy()
-        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
+        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc,dirty=false)
         if not ok : quit("yabee")
-        let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+        let (nx,ny) = newMat[f.x,f.y].endPos.getNextPos(dp,cc)
         var newVal = f.val
         if newMat[nx,ny] != nil : quit("yabee")
         if not newMat.update(newVal,nx,ny,BlackNumber) : return
@@ -663,8 +665,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if front[0].len() > 0:
+
         for j in 0..<1.min(front[0].len()):
           echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
+          echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
         break
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
@@ -681,6 +685,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   block: # 成果
     var front = fronts[^1][0]
     proc embedNotdecided(f:var Node) =
+      if true: return # WARN:720-チルノ髪結合バグが有るのでいい感じにしたい(他の場所もバグあるかも)
       # どこにも隣接していないやつを埋める
       let initMat = f.mat.deepBICopy()
       for x in 0..<f.mat.width:
@@ -693,7 +698,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
               let (nx,ny) = (x+dx,y+dy)
               if not isIn(nx,ny) : continue
               if f.mat[nx,ny] == nil : continue
-              if initMat[nx,ny].color == color : return true
+              if f.mat[nx,ny].color == color : return true
             return false
           )(f)
           if color <= chromMax and adjast : continue
@@ -721,14 +726,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           tries = tries.filterIt(it.success).sorted((a,b)=> a.val - b.val)
           f.mat = tries[0].mat
           f.val = tries[0].val
-
-    proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
-      result = newMatrix[PietColor](self.width,self.height)
-      for x in 0..<self.width:
-        for y in 0..<self.height:
-          if self[x,y] == nil : result[x,y] = -1
-          else: result[x,y] = self[x,y].color
-
     proc findEmbeddedMinIndex():int =
       var minIndex = 0
       var minVal = EPS
@@ -826,5 +823,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,1000)
+    let stegano = quasiStegano2D(orders,baseImg,720)
     stegano.save("./piet.png",codelSize=10)

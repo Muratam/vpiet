@@ -65,7 +65,7 @@ proc makeShortEdges(indexTo:IndexTo) : seq[ShortEdge] =
         to &= (currentNodeIndex,nextNodeIndex,order,i,indexTo.blockSize[index])
         dp.toggle(1)
     of Wall: assert false
-    of Terminate:
+    of Terminate,ErrorOrder:
       maxNodeIndex += 1
       to &= (currentNodeIndex,maxNodeIndex,order,-1,indexTo.blockSize[index])
     else:
