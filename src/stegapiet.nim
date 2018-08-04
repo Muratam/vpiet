@@ -660,6 +660,16 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             let top = it.fund.pop()
             let next = it.fund.pop()
             it.fund.push(if next > top : 1 else:0)
+          f.doFundIt(Roll,-2) :
+            let top = it.fund.pop()
+            let next = it.fund.pop()
+            if next > it.fund.len() : return false
+            if next < 0 : return false
+            if top < 0 : return false
+            var roll = newSeq[int]()
+            for i in 0..<next: roll.add(it.fund.pop())
+            for i in 0..<next: it.fund.push(roll[(i + top) mod next])
+
         #   # 6. Terminate -> 今のブロックの位置配列から増やしまくるのを20個程度して終わらせる
     let nextItems = (proc():seq[seq[seq[Node]]]=
       result = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
