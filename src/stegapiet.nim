@@ -214,7 +214,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo front[0].mat.newGraph()[0].orderAndSizes.mapIt(it.order)
     echo orders
 
-proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 100) :Matrix[PietColor]=
+proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
   # maxFrontierNum = 100(低クオリティ) ~ 500(高クオリティ)
   # N = maxFrontierNum + base.size(for deepcopy?)
   # メモリ:O(N),計算時間:O(N)
@@ -414,9 +414,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     var nexts = newSeqWith( orders.len()+1,
       newSeqWith(maxFundLevel,newBinaryHeap[Node](proc(x,y:Node):int= y.val - x.val)))
     let maxNonNilFrontIndex = toSeq(0..<fronts.len()).filterIt(fronts[it].mapIt(it.len()).sum() > 0).max()
-    let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + it))
+    # 命令を実行できる人の方が偉いので強い重みをつける()
+    let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + 4 * it))
+    # var storedTable =
     proc getMaxFunds(fundLevel,ord:int):int =
-      maxFunds[fundLevel] #* (ord - maxNonNilFrontIndex + maxTrackBackOrderLen) div maxTrackBackOrderLen
+      maxFunds[fundLevel] * (ord - maxNonNilFrontIndex + maxTrackBackOrderLen) div maxTrackBackOrderLen
     proc storedWorstVal(fundLevel,ord:int):int =
       if fundLevel >= maxFundLevel : return -1 # 越えたときも-1で簡易的に弾く
       if nexts[ord][fundLevel].len() < getMaxFunds(fundLevel,ord) : return min(EPS,completedMin)
@@ -472,6 +474,23 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         # 交差した時に,ループに陥らないよう,今のままのdpccで行けるかチェック
         if onlyNotUsedCCDP and f.mat[nx,ny].endPos[cc,dp].used : return false
         return true
+
+      proc checkTerminate(f:Node) =
+        var newMat = f.mat.deepBICopy()
+        var dp = f.dp
+        var cc = f.cc
+        var newVal = f.val
+        for i in 0..<8:
+          let (nX,nY) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+          if isIn(nX,nY):
+            if newMat[nX,nY] == nil :
+              if not newMat.update(newVal,nX,nY,BlackNumber) : return
+            elif newMat[nX,nY].color != BlackNumber: return
+          if i mod 2 == 0 : cc.toggle()
+          else: dp.toggle(1)
+        let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
+        nextNode.store(ord+1)
+
       proc extendBlock(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
@@ -486,6 +505,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
+            if order.operation == Terminate:
+              nextNode.checkTerminate()
+              return
       proc decide(f:Node,order:Order,dOrd,dFund:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
@@ -507,26 +529,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if order == Push : newMat[f.x,f.y].sizeFix = true
         if not nextNode.callback(): return
         nextNode.store(ord+dOrd)
+
       proc doOrder(f:Node) =
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
-        if order.operation == Terminate:
-          var newMat = f.mat.deepBICopy()
-          var dp = f.dp
-          var cc = f.cc
-          var newVal = f.val
-          for i in 0..<8:
-            let (nX,nY) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
-            if isIn(nX,nY):
-              if newMat[nX,nY] == nil :
-                if not newMat.update(newVal,nX,nY,BlackNumber) : return
-              elif newMat[nX,nY].color != BlackNumber: return
-            if i mod 2 == 0 : cc.toggle()
-            else: dp.toggle(1)
-          let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
-          nextNode.store(ord+1)
-          return
         if f.fund.len() > 0 : return
+        if order.operation == Terminate: return
         if order.operation == Push and order.args[0].parseInt() != here.size : return
         f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
@@ -581,6 +589,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       template doFundIt(f:Node,order:Order,dFund:int,operation:untyped) : untyped =
         (proc =
           let here = f.mat[f.x,f.y]
+          # if true : return
           if here.color >= chromMax : return
           f.decide(order,0,dFund,proc(node:var Node) :bool=
             let it{.inject.} = node # ref なのであとで代入すればいいよね
@@ -589,7 +598,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             return true)
         )()
 
-      for i,f in front:
+      for f in front:
         f.extendBlock()
         f.doOrder()
         f.pushBlack()
@@ -643,7 +652,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if front[0].len() > 0:
-        echo front[0][0].mat.toConsole(),front[0][0].val,"\n"
+        for j in 0..<10.min(front[0].len()):
+          echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
         break
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
@@ -652,7 +662,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
     echo "progress: ",progress
     echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
-    if progress > orders.len() * 3:  break # WARN: GC...
     echo maxes
     # echo fronts.mapIt(it.mapIt(it.len()))
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
@@ -804,5 +813,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,500)
+    let stegano = quasiStegano2D(orders,baseImg,1000)
     stegano.save("./piet.png",codelSize=10)
