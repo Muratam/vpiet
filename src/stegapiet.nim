@@ -7,6 +7,7 @@ import makegraph
 import sets
 import colordiff
 import hashes
+# 人間の誤り訂正能力を調べてみて,重みマスクをつけるとよりよさそう
 # 分岐: if / while のみの分岐とすればまだまともなものが作れるのではないか??
 #    : if :: 分岐した二箇所がうまくつながるように幅優先的に処理していき,
 #       : ⬇の重みは命令が進むにつれてでかくなるようにすればきれい??
@@ -216,6 +217,7 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     echo orders
 
 proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
+  # TODO: matrix-pooling(deepBICopy時にはプールの中の物を使い,使用後のものはプールに入れる -> new-deleteのコストが減って高速化???)
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -430,7 +432,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     # 命令を実行できる人の方が偉いので強い重みをつける()
     let maxFunds = toSeq(0..<maxFundLevel).mapIt(maxFrontierNum div (1 + 4 * it))
     proc getMaxFunds(fundLevel,ord:int):int =
-      maxFunds[fundLevel] * (ord - maxNonNilFrontIndex + maxTrackBackOrderLen) div maxTrackBackOrderLen
+      let trackbacked = (ord - maxNonNilFrontIndex + maxTrackBackOrderLen).float /  maxTrackBackOrderLen.float
+      return int(maxFunds[fundLevel].float * max(1.0,trackbacked))
     proc storedWorstVal(fundLevel,ord:int):int =
       if fundLevel >= maxFundLevel : return -1 # 越えたときも-1で簡易的に弾く
       if nexts[ord][fundLevel].len() < getMaxFunds(fundLevel,ord) : return min(EPS,completedMin)
@@ -453,7 +456,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         for f in fr:
           result &= f
     for ord in 0..orders.len():
-      if ord < maxNonNilFrontIndex - maxTrackBackOrderLen : continue
+      # if ord < maxNonNilFrontIndex - maxTrackBackOrderLen : continue
       let front = getFront(ord)
       if ord == orders.len():
         if front.len() > 0 : completedMin = front.mapIt(it.val).max() + 1
@@ -818,9 +821,10 @@ if isMainModule:
         d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC),
         d(Push,3),d(Dup),d(Push,2),d(Add),d(Mul),d(Add),d(OutC)
       ]
-      for oa in orders:
-        let (order,args) = oa
-        result &= (Operation,order,args)
+      for i in 0..<1:
+        for oa in orders:
+          let (order,args) = oa
+          result &= (Operation,order,args)
       result &= (MoveTerminate,Terminate,@[])
     let orders = getOrders()
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
