@@ -67,12 +67,13 @@ proc point*[T](self:var Matrix[T],fun:(proc (x,y:int):T)) =
   for x in 0..<self.width:
     for y in 0..<self.height:
       self[x,y] = fun(x,y)
-proc `[]=`*[T](self:var Matrix[T],x,y:Natural,value:T) =
-  self.data[x + self.width * y] = value
-proc `[]`*[T](self: Matrix[T],x,y:Natural): T =
-  return self.data[x + self.width * y]
-proc `[]`*[T](self: var Matrix[T],x,y:Natural): var T =
-  return self.data[x + self.width * y]
+proc getI*[T](self: Matrix[T],x,y:int): int {.inline.} = x + self.width * y
+proc getX*[T](self: Matrix[T],i:int) : int {.inline.} = i mod self.width
+proc getY*[T](self: Matrix[T],i:int) : int {.inline.} = i div self.width
+proc getXY*[T](self: Matrix[T],i:int) : tuple[x,y:int] {.inline.} = (self.getX(i),self.getY(i))
+proc `[]=`*[T](self:var Matrix[T],x,y:Natural,value:T) = self.data[self.getI(x,y)] = value
+proc `[]`*[T](self: Matrix[T],x,y:Natural): T = self.data[self.getI(x,y)]
+proc `[]`*[T](self: var Matrix[T],x,y:Natural): var T = self.data[self.getI(x,y)]
 proc `$`*[T](self:Matrix[T]) :string=
   result = ""
   for y in 0..<self.height:
