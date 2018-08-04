@@ -518,7 +518,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             nextNode.store(ord)
             if order.operation == Terminate:
               nextNode.checkTerminate()
-              return
+              continue
       proc decide(f:Node,order:Order,dOrd,dFund:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
@@ -682,6 +682,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     var front = fronts[^1][0]
     proc embedNotdecided(f:var Node) =
       # どこにも隣接していないやつを埋める
+      let initMat = f.mat.deepBICopy()
       for x in 0..<f.mat.width:
         for y in 0..<f.mat.height:
           if f.mat[x,y] != nil: continue
@@ -692,7 +693,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
               let (nx,ny) = (x+dx,y+dy)
               if not isIn(nx,ny) : continue
               if f.mat[nx,ny] == nil : continue
-              if f.mat[nx,ny].color == color : return true
+              if initMat[nx,ny].color == color : return true
             return false
           )(f)
           if color <= chromMax and adjast : continue
