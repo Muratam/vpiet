@@ -365,7 +365,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if not adjasts[i0].endPos.canUpdateEndPos(bx,by) : return false
       for b in adjasts[i1].sameBlocks:
         mat.data[b] = adjasts[i0]
-        mat[x,y].sameBlocks &= b
+        mat.data[b].sameBlocks &= b
       for ccdp in allCCDP():
         let (cc,dp) = ccdp
         let used = adjasts[i0].endPos[cc,dp].used or adjasts[i1].endPos[cc,dp].used
@@ -606,7 +606,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         var newVal = f.val
         if newMat[nx,ny] != nil : quit("yabee")
         if not newMat.update(newVal,nx,ny,BlackNumber) : return
-        let nextNode = newNode(newVal,f.x,f.y,newMat,dp,cc,f.fund.deepCopy())
+        let nextNode = newNode(newVal,f.x,f.y,newMat,f.dp,f.cc,f.fund.deepCopy())
         nextNode.store(ord)
       template doFundIt(f:Node,order:Order,dFund:int,operation:untyped) : untyped =
         (proc =
@@ -834,7 +834,7 @@ if isMainModule:
         d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC),
         d(Push,3),d(Dup),d(Push,2),d(Add),d(Mul),d(Add),d(OutC)
       ]
-      for i in 0..<1:
+      for i in 0..<2:
         for oa in orders:
           let (order,args) = oa
           result &= (Operation,order,args)
@@ -845,7 +845,7 @@ if isMainModule:
     echo baseImg.toConsole()
     var sw = newStopWatch()
     sw.start()
-    let stegano = quasiStegano2D(orders,baseImg,720,6) # 720
+    let stegano = quasiStegano2D(orders,baseImg,720,8) # 720
     sw.stop()
     echo sw
     stegano.save("./piet.png",codelSize=10)
