@@ -674,19 +674,19 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       # 最後のプロセス省略
       if front[0].len() > 0:
-        # for j in 0..<1.min(front[0].len()):
-        #   echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
-        #   echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
+        for j in 0..<1.min(front[0].len()):
+          echo front[0][j].mat.toConsole(),front[0][0].val,"\n"
+          echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
         break
       # echo nextItems.mapIt(it.mapIt(it.len()))
       # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
     let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
-    # echo "progress: ",progress
-    # echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
+    echo "progress: ",progress
+    echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
     # echo stored.mapIt(it.mapIt(it.card).sum())
-    # echo maxes
+    echo maxes
     # echo fronts.mapIt(it.mapIt(it.len()))
     if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0 :
       break
@@ -835,7 +835,7 @@ if isMainModule:
     echo baseImg.toConsole()
     var sw = newStopWatch()
     sw.start()
-    let stegano = quasiStegano2D(orders,baseImg,20,6) # 720
+    let stegano = quasiStegano2D(orders,baseImg,720,6) # 720
     sw.stop()
     echo sw
     stegano.save("./piet.png",codelSize=10)
