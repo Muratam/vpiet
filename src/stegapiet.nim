@@ -228,10 +228,9 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # 有彩色以外では color以外の情報は参考にならないことに注意
       # -> deepcopy時に白や黒はサボれる
       endPos:EightDirection[UsedInfo]
-      size:int
       color:PietColor
-      sameBlocks: seq[int]
-      sizeFix : bool # Pushしたのでこのサイズでなくてはならない
+      sameBlocks: seq[int] # ブロックサイズはここから取得できる
+      sizeFix : bool # Pushしたのでこのサイズでなくてはならないというフラグ
     BlockInfo = ref BlockInfoObject
     NodeObject = object
       val,x,y:int
@@ -245,7 +244,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     new(result)
     let index = base.getI(x,y)
     result.endPos = newEightDirection((false,(x.int16,y.int16)))
-    result.size = 1
     result.color = color
     result.sameBlocks = @[index]
     result.sizeFix = false
@@ -262,11 +260,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       new(result)
       # コピーコンストラクタはおそすぎるので直代入
       result.endPos = x.endPos
-      result.size = x.size
       result.color = x.color
       result.sameBlocks = x.sameBlocks
       result.sizeFix = x.sizeFix
 
+    # 5.2 => 8.8 :: 3.6s(new)
+    # => 7.3 :: 2.1s(書き込み)
     result = newMatrix[BlockInfo](mat.width,mat.height)
     for i in 0..<mat.width * mat.height:
       let here = mat.data[i]
@@ -281,6 +280,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       result.data[i] = box(here)
       for j in 1..<here.sameBlocks.len():
         result.data[here.sameBlocks[j]] = result.data[i]
+
 
   proc toConsole(self:Matrix[BlockInfo]) : string =
     var mat = newMatrix[PietColor](self.width,self.height)
@@ -353,7 +353,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # とりあえず0番に結合
       mat[x,y] = adjasts[0]
       mat[x,y].sameBlocks &= base.getI(x,y)
-      mat[x,y].size += 1
       for adjast in adjasts: # ついでに全部結合していいやつかチェック
         if adjast.sizeFix : return false
       if not mat[x,y].endPos.canUpdateEndPos(x,y) : return false
@@ -366,7 +365,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if not adjasts[i0].endPos.canUpdateEndPos(bx,by) : return false
       for b in adjasts[i1].sameBlocks:
         mat.data[b] = adjasts[i0]
-        mat[x,y].size += 1
         mat[x,y].sameBlocks &= b
       for ccdp in allCCDP():
         let (cc,dp) = ccdp
@@ -559,7 +557,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if here.color >= chromMax : return
         if f.fund.len() > 0 : return
         if order.operation == Terminate: return
-        if order.operation == Push and order.args[0].parseInt() != here.size : return
+        if order.operation == Push and order.args[0].parseInt() != here.sameBlocks.len() : return
         f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
         let here = f.mat[f.x,f.y]
@@ -627,7 +625,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         f.doOrder()
         f.pushBlack()
         f.goWhite()
-        f.doFundIt(Push,1): it.fund.push(it.mat[it.x,it.y].size)
+        f.doFundIt(Push,1): it.fund.push(it.mat[it.x,it.y].sameBlocks.len())
         if f.fund.len() > 0:
           f.doFundIt(Pop,-1): discard it.fund.pop()
           f.doFundIt(Pointer,-1): it.dp.toggle(it.fund.pop())
@@ -685,8 +683,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
       # stdout.write progress;stdout.flushFile
     let maxes =  fronts.mapIt(it.mapIt(it.len()).sum())
-    echo "progress: ",progress
-    echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
+    # echo "progress: ",progress
+    # echo "memory  :" ,getTotalMem() div 1024 div 1024,"MB"
     # echo stored.mapIt(it.mapIt(it.card).sum())
     # echo maxes
     # echo fronts.mapIt(it.mapIt(it.len()))
