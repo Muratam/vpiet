@@ -826,5 +826,5 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,10) # 720
+    let stegano = quasiStegano2D(orders,baseImg,720) # 720
     stegano.save("./piet.png",codelSize=10)
