@@ -249,7 +249,12 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc deepBICopy(mat:Matrix[BlockInfo]) : Matrix[BlockInfo] =
     proc box[T](x:T): ref T =
       new(result)
-      result[] = x
+      result.endPos = x.endPos
+      result.size = x.size
+      result.color = x.color
+      result.sameBlocks = x.sameBlocks
+      result.sizeFix = x.sizeFix
+
     result = newMatrix[BlockInfo](mat.width,mat.height)
     for x in 0..<mat.width:
       for y in 0..<mat.height:
@@ -830,5 +835,9 @@ if isMainModule:
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
-    let stegano = quasiStegano2D(orders,baseImg,720) # 720
+    var sw = newStopWatch()
+    sw.start()
+    let stegano = quasiStegano2D(orders,baseImg,20,6) # 720
+    sw.stop()
+    echo sw
     stegano.save("./piet.png",codelSize=10)
