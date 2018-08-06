@@ -361,22 +361,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let (x,y) = endPos[cc,dp].pos
     let (dX,dY) = dp.getdXdY()
     return (x + dX,y + dY)
-  proc updateUsingNextPos(mat:var Matrix[BlockInfo],x,y:int,dp:DP,cc:CC) : tuple[x,y:int] =
-    let newBlock = mat[x,y].deepCopy()
-    for b in newBlock.sameBlocks : mat.data[b] = newBlock
-    newBlock.endPos[cc,dp] = (true,newBlock.endPos[cc,dp].pos)
-    return newBlock.endPos.getNextPos(dp,cc)
-  proc searchNotVisited(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC,dirty:bool=true) : tuple[ok:bool,dp:DP,cc:CC]=
-    # 次に行ったことのない壁ではない場所にいけるなら ok
+  proc searchNotVisited(mat:Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,dp:DP,cc:CC]=
+    # 次に行ったことのない壁ではない場所にいけるかどうかだけチェック(更新はしない)
     doAssert mat[x,y] != nil and mat[x,y].color < chromMax
     var dp = startDP
     var cc = startCC
     result = (false,dp,cc)
     for i in 0..<8:
       let used = mat[x,y].endPos[cc,dp].used
-      let (nX,nY) =
-        if dirty : mat.updateUsingNextPos(x,y,dp,cc)
-        else : mat[x,y].endPos.getNextPos(dp,cc)
+      let (nX,nY) = mat[x,y].endPos.getNextPos(dp,cc)
       if not isIn(nX,nY) or (mat[nX,nY] != nil and mat[nX,nY].color == BlackNumber):
         if i mod 2 == 0 : cc.toggle()
         else: dp.toggle(1)
@@ -384,6 +377,40 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if used : return
       return (true,dp,cc)
     return
+
+  proc updateUsingNextPos(mat:var Matrix[BlockInfo],x,y:int,dp:DP,cc:CC) : tuple[x,y:int] =
+    # 使用済みに変更して全部更新してから返却
+    doAssert( not mat[x,y].endPos[cc,dp].used )
+    let newBlock = mat[x,y].deepCopy()
+    newBlock.endPos[cc,dp] = (true,newBlock.endPos[cc,dp].pos)
+    for b in newBlock.sameBlocks : mat.data[b] = newBlock
+    return mat[x,y].endPos.getNextPos(dp,cc)
+
+  proc toNextState(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,x,y:int,dp:DP,cc:CC]=
+    # 使用したことのない場所で新たに行けるならそれを返却
+    doAssert mat[x,y] != nil and mat[x,y].color < chromMax
+    template failed() : untyped = (false,x,y,startDP,startCC)
+    var dp = startDP
+    var cc = startCC
+    var usedDir : EightDirection[bool]
+    for i in 0..<8:
+      let used = mat[x,y].endPos[cc,dp].used
+      let (nX,nY) = mat[x,y].endPos.getNextPos(dp,cc)
+      usedDir[cc,dp] = true
+      if not isIn(nX,nY) or (mat[nX,nY] != nil and mat[nX,nY].color == BlackNumber):
+        if i mod 2 == 0 : cc.toggle()
+        else: dp.toggle(1)
+        continue
+      if used : return failed
+      let newBlock = mat[x,y].deepCopy()
+      for ccdp in allCCDP():
+        let (ncc,ndp) = ccdp
+        if not usedDir[ncc,ndp] : continue
+        newBlock.endPos[ncc,ndp] = (true,newBlock.endPos[ncc,ndp].pos)
+      for b in newBlock.sameBlocks : mat.data[b] = newBlock
+      return (true,nX,nY,dp,cc)
+    return failed
+
 
   var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
   var completedMin = EPS
@@ -449,7 +476,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         return (true,newVal,newMat)
       proc tryUpdateNotVisited(f:Node,color:PietColor,dOrd,dFund:int,onlyNil:bool = false,onlySameColor:bool=false,onlyNotUsedCCDP:bool=false) : bool =
         # 一回試してみる(+nilなら更新した時のコストもチェック)
-        let (ok,dp,cc) = f.mat.searchNotVisited(f.x,f.y,f.dp,f.cc,false)
+        let (ok,dp,cc) = f.mat.searchNotVisited(f.x,f.y,f.dp,f.cc)
         if not ok : return false
         let (nx,ny) = f.mat[f.x,f.y].endPos.getNextPos(dp,cc)
         if f.mat[nx,ny] == nil:
@@ -503,9 +530,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let color = here.color.getNextColor(order).PietColor
         if not f.tryUpdateNotVisited(color,dOrd,dFund,onlySameColor=true,onlyNotUsedCCDP=true) : return
         var newMat = f.mat.deepCopy()
-        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
+        let (ok,nx,ny,dp,cc) = newMat.toNextState(f.x,f.y,f.dp,f.cc)
         if not ok : quit("yabee")
-        let (nx,ny) = newMat.updateUsingNextPos(f.x,f.y,dp,cc)
         if newMat[nx,ny] != nil :
           let next = newMat[nx,ny]
           if next.color != color or next.endPos[cc,dp].used : quit("yabee")
@@ -555,9 +581,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         else:
           if not f.tryUpdateNotVisited(WhiteNumber,0,0,onlyNil=true) : return
           var newMat = f.mat.deepCopy()
-          let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
+          let (ok,nx,ny,dp,cc) = newMat.toNextState(f.x,f.y,f.dp,f.cc)
           if not ok : quit("yabee")
-          let (nx,ny) = newMat.updateUsingNextPos(f.x,f.y,dp,cc)
           var newVal = f.val
           if newMat[nx,ny] != nil : quit("yabee")
           if not newMat.update(newVal,nx,ny,WhiteNumber) : return
@@ -568,7 +593,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if here.color >= chromMax : return # 白で壁にぶつからないように
         if not f.tryUpdateNotVisited(BlackNumber,0,0,onlyNil=true) : return
         var newMat = f.mat.deepCopy()
-        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc,dirty=false)
+        let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
         if not ok : quit("yabee")
         let (nx,ny) = newMat[f.x,f.y].endPos.getNextPos(dp,cc)
         var newVal = f.val
@@ -653,7 +678,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       if front[0].len() == 0: continue
       # 最後のプロセス省略
-      for j in 0..<1.min(front[0].len()):
+      for j in 0..<0.min(front[0].len()):
         # echo fronts.mapIt(it.mapIt(it.len()))
         # echo stored.mapIt(it.mapIt(it.card).sum())
         # echo nextItems.mapIt(it.mapIt(it.len()))
@@ -671,8 +696,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   block: # 成果
     var front = fronts[^1][0]
     proc embedNotdecided(f:var Node) =
-      # if true: return # WARN:720-チルノ髪結合バグが有るのでいい感じにしたい(他の場所もバグあるかも)
-      # どこにも隣接していないやつを埋める
       let initMat = f.mat.deepCopy()
       for x in 0..<f.mat.width:
         for y in 0..<f.mat.height:
