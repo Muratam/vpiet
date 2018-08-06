@@ -379,10 +379,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
 
   proc updateUsingNextPos(mat:var Matrix[BlockInfo],x,y:int,dp:DP,cc:CC) : tuple[x,y:int] =
     # 使用済みに変更して全部更新してから返却
-    doAssert( not mat[x,y].endPos[cc,dp].used )
-    let newBlock = mat[x,y].deepCopy()
-    newBlock.endPos[cc,dp] = (true,newBlock.endPos[cc,dp].pos)
-    for b in newBlock.sameBlocks : mat.data[b] = newBlock
+    if not mat[x,y].endPos[cc,dp].used :
+      let newBlock = mat[x,y].deepCopy()
+      newBlock.endPos[cc,dp] = (true,newBlock.endPos[cc,dp].pos)
+      for b in newBlock.sameBlocks : mat.data[b] = newBlock
     return mat[x,y].endPos.getNextPos(dp,cc)
 
   proc toNextState(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC) : tuple[ok:bool,x,y:int,dp:DP,cc:CC]=
@@ -677,7 +677,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       if front[0].len() == 0: continue
       # 最後のプロセス省略
-      for j in 0..<0.min(front[0].len()):
+      for j in 0..<1.min(front[0].len()):
         # echo fronts.mapIt(it.mapIt(it.len()))
         # echo stored.mapIt(it.mapIt(it.card).sum())
         # echo nextItems.mapIt(it.mapIt(it.len()))
@@ -824,7 +824,7 @@ if isMainModule:
         d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC),
         d(Push,3),d(Dup),d(Push,2),d(Add),d(Mul),d(Add),d(OutC)
       ]
-      for i in 0..<1:
+      for i in 0..<2:
         for oa in orders:
           let (order,args) = oa
           result &= (Operation,order,args)
@@ -835,7 +835,7 @@ if isMainModule:
     echo baseImg.toConsole()
     var sw = newStopWatch()
     sw.start()
-    let stegano = quasiStegano2D(orders,baseImg,20,6) # 720
+    let stegano = quasiStegano2D(orders,baseImg,720,6) # 720
     sw.stop()
     echo sw
     stegano.save("./piet.png",codelSize=10)
