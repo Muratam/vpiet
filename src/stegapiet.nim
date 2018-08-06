@@ -342,12 +342,15 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       for b in newBlock.sameBlocks:
         let (bx,by) = base.getXY(b)
         if not zeroBlock.endPos.canUpdateEndPos(bx,by) : return false
+      # 使用済みを共有
       for ccdp in allCCDP():
         let (cc,dp) = ccdp
         let used = zeroBlock.endPos[cc,dp].used or newBlock.endPos[cc,dp].used
         zeroBlock.endPos[cc,dp] = (used,zeroBlock.endPos[cc,dp].pos)
+        newBlock.endPos[cc,dp] = (used,newBlock.endPos[cc,dp].pos)
       # 更新
       zeroBlock.sameBlocks &= newBlock.sameBlocks
+      newBlock.sameBlocks &= zeroBlock.sameBlocks
     for l in 1..<adjasts.len(): adjasts[l].connect()
     zeroBlock.syncSameBlocks()
     return true
@@ -358,9 +361,11 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     let (x,y) = endPos[cc,dp].pos
     let (dX,dY) = dp.getdXdY()
     return (x + dX,y + dY)
-  proc useNextPos(endPos:var EightDirection[UsedInfo],dp:DP,cc:CC) : tuple[x,y:int] =
-    endPos[cc,dp] = (true,endPos[cc,dp].pos)
-    return endPos.getNextPos(dp,cc)
+  proc updateUsingNextPos(mat:var Matrix[BlockInfo],x,y:int,dp:DP,cc:CC) : tuple[x,y:int] =
+    let newBlock = mat[x,y].deepCopy()
+    for b in newBlock.sameBlocks : mat.data[b] = newBlock
+    newBlock.endPos[cc,dp] = (true,newBlock.endPos[cc,dp].pos)
+    return newBlock.endPos.getNextPos(dp,cc)
   proc searchNotVisited(mat:var Matrix[BlockInfo],x,y:int,startDP:DP,startCC:CC,dirty:bool=true) : tuple[ok:bool,dp:DP,cc:CC]=
     # 次に行ったことのない壁ではない場所にいけるなら ok
     doAssert mat[x,y] != nil and mat[x,y].color < chromMax
@@ -370,7 +375,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     for i in 0..<8:
       let used = mat[x,y].endPos[cc,dp].used
       let (nX,nY) =
-        if dirty : mat[x,y].endPos.useNextPos(dp,cc)
+        if dirty : mat.updateUsingNextPos(x,y,dp,cc)
         else : mat[x,y].endPos.getNextPos(dp,cc)
       if not isIn(nX,nY) or (mat[nX,nY] != nil and mat[nX,nY].color == BlackNumber):
         if i mod 2 == 0 : cc.toggle()
@@ -466,7 +471,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         var cc = f.cc
         var newVal = f.val
         for i in 0..<8:
-          let (nX,nY) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+          let (nX,nY) = newMat.updateUsingNextPos(f.x,f.y,dp,cc)
           if isIn(nX,nY):
             if newMat[nX,nY] == nil :
               if not newMat.update(newVal,nX,nY,BlackNumber) : return
@@ -500,7 +505,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         var newMat = f.mat.deepCopy()
         let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
         if not ok : quit("yabee")
-        let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+        let (nx,ny) = newMat.updateUsingNextPos(f.x,f.y,dp,cc)
         if newMat[nx,ny] != nil :
           let next = newMat[nx,ny]
           if next.color != color or next.endPos[cc,dp].used : quit("yabee")
@@ -552,7 +557,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
           var newMat = f.mat.deepCopy()
           let (ok,dp,cc) = newMat.searchNotVisited(f.x,f.y,f.dp,f.cc)
           if not ok : quit("yabee")
-          let (nx,ny) = newMat[f.x,f.y].endPos.useNextPos(dp,cc)
+          let (nx,ny) = newMat.updateUsingNextPos(f.x,f.y,dp,cc)
           var newVal = f.val
           if newMat[nx,ny] != nil : quit("yabee")
           if not newMat.update(newVal,nx,ny,WhiteNumber) : return
