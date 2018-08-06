@@ -348,10 +348,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let (cc,dp) = ccdp
         let used = zeroBlock.endPos[cc,dp].used or newBlock.endPos[cc,dp].used
         zeroBlock.endPos[cc,dp] = (used,zeroBlock.endPos[cc,dp].pos)
-        newBlock.endPos[cc,dp] = (used,newBlock.endPos[cc,dp].pos)
       # 更新
       zeroBlock.sameBlocks &= newBlock.sameBlocks
-      newBlock.sameBlocks &= zeroBlock.sameBlocks
     for l in 1..<adjasts.len(): adjasts[l].connect()
     zeroBlock.syncSameBlocks()
     return true
