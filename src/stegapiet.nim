@@ -314,9 +314,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if x < e.leftL.pos.x or x == e.leftL.pos.x and y > e.leftL.pos.y : e.leftL.update()
       if x > e.rightR.pos.x or x == e.rightR.pos.x and y > e.rightR.pos.y : e.rightR.update()
       if x > e.rightL.pos.x or x == e.rightL.pos.x and y < e.rightL.pos.y : e.rightL.update()
-    proc syncSameBlocks(mat: var Matrix[BlockInfo],blockInfo:BlockInfo) =
-      for index in blockInfo.sameBlocks:
-        mat.data[index] = blockInfo
+    template syncSameBlocks(blockInfo:BlockInfo) =
+      for index in blockInfo.sameBlocks : mat.data[index] = blockInfo
     doAssert mat[x,y] == nil
     if color == WhiteNumber:
       mat[x,y] = whiteBlockInfo
@@ -333,7 +332,6 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     # とりあえず自身をコピーした0番に結合
     let zeroBlock = adjasts[0].deepCopy()
     zeroBlock.sameBlocks &= base.getI(x,y)
-    mat.syncSameBlocks(zeroBlock)
     if not zeroBlock.endPos.canUpdateEndPos(x,y) : return false
     template connect(adjast) = # コピーが作成されているゼロ番に結合
       let newBlock = adjast.deepCopy()
@@ -350,8 +348,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         zeroBlock.endPos[cc,dp] = (used,newBlock.endPos[cc,dp].pos)
       # 更新
       for b in newBlock.sameBlocks: zeroBlock.sameBlocks &= b
-      mat.syncSameBlocks(zeroBlock)
     for l in 1..<adjasts.len(): adjasts[l].connect()
+    zeroBlock.syncSameBlocks()
     return true
   proc update(mat:var Matrix[BlockInfo],val:var int,x,y:int,color:PietColor) : bool =
     val.updateVal(x,y,color)
@@ -810,7 +808,7 @@ if isMainModule:
     echo baseImg.toConsole()
     var sw = newStopWatch()
     sw.start()
-    let stegano = quasiStegano2D(orders,baseImg,200,4) # 720
+    let stegano = quasiStegano2D(orders,baseImg,20,4) # 720
     sw.stop()
     echo sw
     stegano.save("./piet.png",codelSize=10)
