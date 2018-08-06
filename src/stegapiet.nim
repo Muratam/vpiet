@@ -256,6 +256,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
   proc deepCopy(x:BlockInfo): BlockInfo =
     # コピーコンストラクタはおそすぎるので直代入
     new(result)
+    # result[] = x[]
     result.endPos = x.endPos
     result.color = x.color
     result.sameBlocks = x.sameBlocks
