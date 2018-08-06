@@ -336,18 +336,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     template connect(adjast) = # コピーが作成されているゼロ番に結合
       let newBlock = adjast.deepCopy()
       # チェック
-      for b in newBlock.sameBlocks:
-        let (bx,by) = base.getXY(b)
-        if not zeroBlock.endPos.canUpdateEndPos(bx,by) : return false
       for b in zeroBlock.sameBlocks:
         let (bx,by) = base.getXY(b)
         if not newBlock.endPos.canUpdateEndPos(bx,by) : return false
+      for b in newBlock.sameBlocks:
+        let (bx,by) = base.getXY(b)
+        if not zeroBlock.endPos.canUpdateEndPos(bx,by) : return false
       for ccdp in allCCDP():
         let (cc,dp) = ccdp
         let used = zeroBlock.endPos[cc,dp].used or newBlock.endPos[cc,dp].used
-        zeroBlock.endPos[cc,dp] = (used,newBlock.endPos[cc,dp].pos)
+        zeroBlock.endPos[cc,dp] = (used,zeroBlock.endPos[cc,dp].pos)
       # 更新
-      for b in newBlock.sameBlocks: zeroBlock.sameBlocks &= b
+      zeroBlock.sameBlocks &= newBlock.sameBlocks
     for l in 1..<adjasts.len(): adjasts[l].connect()
     zeroBlock.syncSameBlocks()
     return true
@@ -491,6 +491,8 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
             if not ok : continue
             let nextNode = newNode(newVal,nx,ny,newMat,f.dp,f.cc,f.fund.deepCopy())
             nextNode.store(ord)
+            if order.operation == Terminate: nextNode.checkTerminate()
+
       proc decide(f:Node,order:Order,dOrd,dFund:int,callback:proc(_:var Node):bool = (proc(_:var Node):bool=true)) =
         let here = f.mat[f.x,f.y]
         let color = here.color.getNextColor(order).PietColor
@@ -517,9 +519,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         let here = f.mat[f.x,f.y]
         if here.color >= chromMax : return
         if f.fund.len() > 0 : return
-        if order.operation == Terminate:
-          f.checkTerminate()
-          return
+        if order.operation == Terminate: return
         if order.operation == Push and order.args[0].parseInt() != here.sameBlocks.len() : return
         f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
@@ -648,7 +648,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       if front.len() == 0 : continue
       if front[0].len() == 0: continue
       # 最後のプロセス省略
-      for j in 0..<0.min(front[0].len()):
+      for j in 0..<1.min(front[0].len()):
         # echo fronts.mapIt(it.mapIt(it.len()))
         # echo stored.mapIt(it.mapIt(it.card).sum())
         # echo nextItems.mapIt(it.mapIt(it.len()))
