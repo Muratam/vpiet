@@ -353,6 +353,10 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if here.color >= chromMax : return
         if f.fund.len() > 0 : return
         if order.operation == Terminate: return
+        if order.operation == Pointer :
+          doAssert(false,"Pointer Is Not Impremented")
+        if order.operation == Switch :
+          doAssert(false,"Switch Is Not Impremented")
         if order.operation == Push and order.args[0].parseInt() != here.sameBlocks.len() : return
         f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
@@ -575,17 +579,40 @@ if isMainModule:
         if n <= 0 and ord != Push : return (ord,@[])
         else: return (ord,@[$n])
       let orders = @[
-        d(Push,3),d(Dup),d(Mul),d(Dup),d(Mul),d(Push,1),d(Sub),d(Dup),d(OutC),
-        d(Push,3),d(Dup),d(Push,1),d(Add),d(Add),d(Sub),d(Dup),d(OutC),
-        d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC),
-        d(Push,3),d(Dup),d(Push,2),d(Add),d(Mul),d(Add),d(OutC)
+        d(Push,3),d(Dup),d(Mul),d(Dup),d(Mul),d(Push,1),d(Sub),d(Dup),d(OutC), # P
+        d(Push,3),d(Dup),d(Push,1),d(Add),d(Add),d(Sub),d(Dup),d(OutC), # I
+        d(Push,2),d(Dup),d(Add),d(Sub),d(Dup),d(OutC), # E
+        d(Push,3),d(Dup),d(Push,2),d(Add),d(Mul),d(Add),d(OutC) # T
       ]
       for i in 0..<2:
         for oa in orders:
           let (order,args) = oa
           result &= (Operation,order,args)
       result &= (MoveTerminate,Terminate,@[])
-    let orders = getOrders()
+
+    proc getBranchedOrders():seq[OrderAndArgs] =
+      result = @[]
+      proc d(ord:Order,n:int = -1):tuple[ord:Order,arg:seq[string]] =
+        if n <= 0 and ord != Push : return (ord,@[])
+        else: return (ord,@[$n])
+      # ---2 1 1 1 1 1 2 と出力-----------------
+      # A[push 2 && outn && push 5]
+      # do : B[push 1 && outn && push 1 && sub && dup not not]: while!(pop == 0)
+      # C[push 2 && outn && terminate]
+      # --------------------
+      # A[] - B[] - Switch{1:B} - C[]
+      let orders = @[
+        d(Push,2),d(OutN),d(Push,5), # A
+        d(Push,1),d(OutN),d(Push,1),d(Sub),d(Dup),d(Not),d(Not),d(Switch,3), # B ((絶対アドレス 0-indexed) 1 のときは 3番目マスへジャンプしたい)
+        d(Push,2),d(OutN), # C
+      ]
+      for oa in orders:
+        let (order,args) = oa
+        result &= (Operation,order,args)
+      result &= (MoveTerminate,Terminate,@[])
+
+
+    let orders = getBranchedOrders()
     # let orders = makeRandomOrders((baseImg.width.float * baseImg.height.float * 0.1).int)
     echo orders
     echo baseImg.toConsole()
