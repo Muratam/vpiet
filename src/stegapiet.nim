@@ -9,6 +9,7 @@ import makegraph
 import colordiff
 import sets
 import hashes
+import tables
 
 
 # まずは一本自由にTerminateまで作成.(x1000くらい解が得られるだろう)
@@ -17,9 +18,20 @@ import hashes
 # 最初に本筋を作った後,「繋げるためだけ」の空の命令列のブランチを生やせば良くなるのでだいぶ問題が制約されて楽
 # if else と while からそれに変換もまあ頑張ればできるはず
 
+type
+  OrderInfo* = tuple[
+    order:EMoveType,
+    operation:Order,
+    args:seq[string],
+    isDst:bool,
+    branchIndex:int
+  ]
 
 
-proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
+
+
+
+proc quasiStegano2D*(orders:seq[OrderInfo],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
@@ -35,12 +47,18 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       sameBlocks: seq[int] # ブロックサイズはここから取得できる
       sizeFix : bool # Pushしたのでこのサイズでなくてはならないというフラグ
     BlockInfo = ref BlockInfoObject
+
+    State = tuple [x,y:int,dp:DP,cc:CC]
+    Branch = ref object
+      src,dst:State
+      orderNum: int
     NodeObject = object
       val,x,y:int
       mat:Matrix[BlockInfo]
       dp:DP
       cc:CC
       fund:Stack[int]
+      branches: Table[int,Branch]
     Node = ref NodeObject not nil
   proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
     # 新たに(隣接のない前提で)1マス追記
@@ -77,7 +95,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       for y in 0..<self.height:
         if self[x,y] == nil : result[x,y] = -1
         else: result[x,y] = self[x,y].color
-  proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int]) : Node =
+  proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int],branches:Table[int,Branch]) : Node =
     new(result)
     result.val = val
     result.x = x
@@ -86,6 +104,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
     result.dp = dp
     result.cc = cc
     result.fund = fund
+    result.branches = branches
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
   proc checkAdjasts(mat:Matrix[BlockInfo],x,y:int,color:PietColor) : seq[BlockInfo] =
     # color と同じ色で隣接しているものを取得
@@ -213,7 +232,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       return (true,nX,nY,dp,cc)
     return failed
 
-
+  let branchMaxIndex = orders.filterIt(it.isDst).mapIt(it.branchIndex).max()
   var fronts = newSeqWith(orders.len()+1,newSeqWith(maxFundLevel,newSeq[Node]()))
   var completedMin = EPS
   block: # 最初の1マスは白以外
@@ -221,7 +240,7 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
       var initMat = newMatrix[BlockInfo](base.width,base.height) # 全てnil
       var val = 0
       if not initMat.update(val,0,0,c.PietColor) : quit("yabee")
-      fronts[0][0] &= newNode(val,0,0,initMat,newDP(),newCC(),newStack[int]())
+      fronts[0][0] &= newNode(val,0,0,initMat,newDP(),newCC(),newStack[int](),initTable[int,Branch]())
   for progress in 0..<(base.width * base.height):
     # top()が一番雑魚
     var nexts = newSeqWith( orders.len()+1,
@@ -354,9 +373,14 @@ proc quasiStegano2D*(orders:seq[OrderAndArgs],base:Matrix[PietColor],maxFrontier
         if f.fund.len() > 0 : return
         if order.operation == Terminate: return
         if order.operation == Pointer :
-          doAssert(false,"Pointer Is Not Impremented")
+          doAssert(ord > 0 and orders[ord-1].operation == Not) # Not Pointer のみ
+          # 命令自体は 0 の時の挙動として(DPを変更せずに普通に続ける)
+          # 結合フェイズでの fund は無限に許可する
+          # DP+=1 の時のfrom:[x,y,cc,dp] と 結合先の(代表元の最終的な制約の)to:[x,y,cc,dp] を保持
+          #
+          # doAssert(false,"Pointer Is Not Implemented")
         if order.operation == Switch :
-          doAssert(false,"Switch Is Not Impremented")
+          doAssert(false,"Switch Is Not Implemented")
         if order.operation == Push and order.args[0].parseInt() != here.sameBlocks.len() : return
         f.decide(order.operation,1,0)
       proc goWhite(f:Node) =
@@ -573,7 +597,7 @@ if isMainModule:
     discard quasiStegano2D(orders,baseImg,400).toConsole()
   else :
     let baseImg = commandLineParams()[0].newPietMap().pietColorMap
-    proc getOrders():seq[OrderAndArgs] =
+    proc getOrders():seq[OrderInfo] =
       result = @[]
       proc d(ord:Order,n:int = -1):tuple[ord:Order,arg:seq[string]] =
         if n <= 0 and ord != Push : return (ord,@[])
@@ -590,7 +614,7 @@ if isMainModule:
           result &= (Operation,order,args)
       result &= (MoveTerminate,Terminate,@[])
 
-    proc getBranchedOrders():seq[OrderAndArgs] =
+    proc getBranchedOrders():seq[OrderInfo] =
       result = @[]
       proc d(ord:Order,n:int = -1):tuple[ord:Order,arg:seq[string]] =
         if n <= 0 and ord != Push : return (ord,@[])
@@ -601,15 +625,26 @@ if isMainModule:
       # C[push 2 && outn && terminate]
       # --------------------
       # A[] - B[] - Switch{1:B} - C[]
-      let orders = @[
+      var orders = @[
         d(Push,2),d(OutN),d(Push,5), # A
-        d(Push,1),d(OutN),d(Push,1),d(Sub),d(Dup),d(Not),d(Not),d(Switch,3), # B ((絶対アドレス 0-indexed) 1 のときは 3番目マスへジャンプしたい)
+        d(Push,1),d(OutN),d(Push,1),d(Sub),d(Dup),d(Not),d(Not),d(Pointer,3), # B ((絶対アドレス 0-indexed) 1 のときは 3番目マスへジャンプしたい)
         d(Push,2),d(OutN), # C
       ]
-      for oa in orders:
+      # 命令列中での到着地の番号
+      let branchDstOrderIndexes = orders.filterIt(it.ord == Pointer).mapIt(it.arg[0].parseInt())
+      # 作成ブランチ列での番号
+      var branchMaxIndex = -1
+      for i,oa in orders:
         let (order,args) = oa
-        result &= (Operation,order,args)
-      result &= (MoveTerminate,Terminate,@[])
+        let isDst = i in branchDstOrderIndexes
+        if isDst : branchMaxIndex += 1
+        let branchIndex = if isDst : branchMaxIndex else: -1
+        result &= (Operation,order,args,isDst,branchIndex)
+      block:
+        let isDst = orders.len() in branchDstOrderIndexes
+        if isDst : branchMaxIndex += 1
+        let branchIndex = if isDst : branchMaxIndex else: -1
+        result &= (MoveTerminate,Terminate,@[],isDst,branchIndex)
 
 
     let orders = getBranchedOrders()
