@@ -26,85 +26,91 @@ type
     isDst:bool,
     branchIndex:int
   ]
+  Pos = tuple[x,y:int16] # 25:390MB -> 25:268MB # メモリが 2/3で済む(int8ではほぼ変化なし)
+  # マスを増やすという操作のために今のブロックの位置配列を持っておく
+  UsedInfo = tuple[used:bool,pos:Pos]
+  BlockInfoObject = object
+    # 有彩色以外では color以外の情報は参考にならないことに注意
+    # -> deepcopy時に白や黒はサボれる
+    endPos:EightDirection[UsedInfo]
+    color:PietColor
+    sameBlocks: seq[int] # ブロックサイズはここから取得できる
+    sizeFix : bool # Pushしたのでこのサイズでなくてはならないというフラグ
+  BlockInfo = ref BlockInfoObject
+
+  StateObj = tuple [x,y:int,dp:DP,cc:CC]
+  State = ref StateObj
+  Branch = ref object
+    src,dst:State
+    orderNum: int
+  NodeObject = object
+    val,x,y:int
+    mat:Matrix[BlockInfo]
+    dp:DP
+    cc:CC
+    fund:Stack[int]
+    branches: Table[int,Branch]
+  Node = ref NodeObject not nil
 
 
+proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
+  # 新たに(隣接のない前提で)1マス追記
+  new(result)
+  let index = base.getI(x,y)
+  result.endPos = newEightDirection((false,(x.int16,y.int16)))
+  result.color = color
+  result.sameBlocks = @[index]
+  result.sizeFix = false
+let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
+let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
+proc hashing(mat:Matrix[BlockInfo]) : Hash =
+  for d in mat.data:
+    result = result !& hash(if d == nil : -1 else: d.color)
+  result = !$result
+proc deepCopy(x:BlockInfo): BlockInfo =
+  # コピーコンストラクタはおそすぎるので直代入
+  new(result)
+  # result[] = x[]
+  result.endPos = x.endPos
+  result.color = x.color
+  result.sameBlocks = x.sameBlocks
+  result.sizeFix = x.sizeFix
 
+proc toConsole(self:Matrix[BlockInfo]) : string =
+  var mat = newMatrix[PietColor](self.width,self.height)
+  for x in 0..<self.width:
+    for y in 0..<self.height:
+      mat[x,y] = if self[x,y] == nil : -1  else: self[x,y].color
+  return mat.toConsole()
+proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
+  result = newMatrix[PietColor](self.width,self.height)
+  for x in 0..<self.width:
+    for y in 0..<self.height:
+      if self[x,y] == nil : result[x,y] = -1
+      else: result[x,y] = self[x,y].color
+proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int],branches:Table[int,Branch]) : Node =
+  new(result)
+  result.val = val
+  result.x = x
+  result.y = y
+  result.mat = mat
+  result.dp = dp
+  result.cc = cc
+  result.fund = fund
+  result.branches = branches
 
+# 分岐実装
+# 複数が同時に同じ場所を刺さないと仮定
+# dOrd == 1 の時に (> 1 はエラー) isDst なら branchesに追加. src は 一旦 nil
+# Pointer / Switch の時には branchesの src に追加. dst はnilかもしれない
+# Terminate 時には全てのbranchesが埋まっているハズ.
+# Terminate 後は order := Label とかのものになっているはずで.それの実装はbranchesを参考にしてωでやる
 
 proc quasiStegano2D*(orders:seq[OrderInfo],base:Matrix[PietColor],maxFrontierNum :int=500,maxFundLevel :int= 4,maxTrackBackOrderLen :int= 30) :Matrix[PietColor]=
   # stegano1Dの時と同じで1マス1マス進めていく方が探索範囲が広そう
   # * 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
   doAssert base.width < int16.high and base.height < int16.high
-  type
-    Pos = tuple[x,y:int16] # 25:390MB -> 25:268MB # メモリが 2/3で済む(int8ではほぼ変化なし)
-    # マスを増やすという操作のために今のブロックの位置配列を持っておく
-    UsedInfo = tuple[used:bool,pos:Pos]
-    BlockInfoObject = object
-      # 有彩色以外では color以外の情報は参考にならないことに注意
-      # -> deepcopy時に白や黒はサボれる
-      endPos:EightDirection[UsedInfo]
-      color:PietColor
-      sameBlocks: seq[int] # ブロックサイズはここから取得できる
-      sizeFix : bool # Pushしたのでこのサイズでなくてはならないというフラグ
-    BlockInfo = ref BlockInfoObject
 
-    State = tuple [x,y:int,dp:DP,cc:CC]
-    Branch = ref object
-      src,dst:State
-      orderNum: int
-    NodeObject = object
-      val,x,y:int
-      mat:Matrix[BlockInfo]
-      dp:DP
-      cc:CC
-      fund:Stack[int]
-      branches: Table[int,Branch]
-    Node = ref NodeObject not nil
-  proc newBlockInfo(x,y:int,color:PietColor) : BlockInfo =
-    # 新たに(隣接のない前提で)1マス追記
-    new(result)
-    let index = base.getI(x,y)
-    result.endPos = newEightDirection((false,(x.int16,y.int16)))
-    result.color = color
-    result.sameBlocks = @[index]
-    result.sizeFix = false
-  let whiteBlockInfo = newBlockInfo(-1,-1,WhiteNumber)
-  let blackBlockInfo = newBlockInfo(-1,-1,BlackNumber)
-  proc hashing(mat:Matrix[BlockInfo]) : Hash =
-    for d in mat.data:
-      result = result !& hash(if d == nil : -1 else: d.color)
-    result = !$result
-  proc deepCopy(x:BlockInfo): BlockInfo =
-    # コピーコンストラクタはおそすぎるので直代入
-    new(result)
-    # result[] = x[]
-    result.endPos = x.endPos
-    result.color = x.color
-    result.sameBlocks = x.sameBlocks
-    result.sizeFix = x.sizeFix
-
-  proc toConsole(self:Matrix[BlockInfo]) : string =
-    var mat = newMatrix[PietColor](self.width,self.height)
-    for x in 0..<self.width:
-      for y in 0..<self.height:
-        mat[x,y] = if self[x,y] == nil : -1  else: self[x,y].color
-    return mat.toConsole()
-  proc toPietColorMap(self:Matrix[BlockInfo]) : Matrix[PietColor] =
-    result = newMatrix[PietColor](self.width,self.height)
-    for x in 0..<self.width:
-      for y in 0..<self.height:
-        if self[x,y] == nil : result[x,y] = -1
-        else: result[x,y] = self[x,y].color
-  proc newNode(val,x,y:int,mat:Matrix[BlockInfo],dp:DP,cc:CC,fund:Stack[int],branches:Table[int,Branch]) : Node =
-    new(result)
-    result.val = val
-    result.x = x
-    result.y = y
-    result.mat = mat
-    result.dp = dp
-    result.cc = cc
-    result.fund = fund
-    result.branches = branches
   proc isIn(x,y:int):bool = x >= 0 and y >= 0 and x < base.width and y < base.height
   proc checkAdjasts(mat:Matrix[BlockInfo],x,y:int,color:PietColor) : seq[BlockInfo] =
     # color と同じ色で隣接しているものを取得
@@ -589,15 +595,16 @@ proc quasiStegano2D*(orders:seq[OrderInfo],base:Matrix[PietColor],maxFrontierNum
 
 if isMainModule:
   printMemories()
-  if commandLineParams().len() == 0:
-    echo "Random:"
-    let orders = makeRandomOrders(20)
-    let baseImg = makeLocalRandomPietColorMatrix(12,12)
-    echo baseImg.toConsole()
-    discard quasiStegano2D(orders,baseImg,400).toConsole()
-  else :
+  # if commandLineParams().len() == 0:
+  #   echo "Random:"
+  #   let orders = makeRandomOrders(20)
+  #   let baseImg = makeLocalRandomPietColorMatrix(12,12)
+  #   echo baseImg.toConsole()
+  #   discard quasiStegano2D(orders,baseImg,400).toConsole()
+  # else :
+  block:
     let baseImg = commandLineParams()[0].newPietMap().pietColorMap
-    proc getOrders():seq[OrderInfo] =
+    proc getOrders():seq[OrderAndArgs] =
       result = @[]
       proc d(ord:Order,n:int = -1):tuple[ord:Order,arg:seq[string]] =
         if n <= 0 and ord != Push : return (ord,@[])
