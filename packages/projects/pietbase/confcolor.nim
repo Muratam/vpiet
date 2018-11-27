@@ -1,7 +1,8 @@
-import color
+import pietcolor
 import nimPNG
 import conf
-
+import packages/common
+import osproc
 
 when pietColorType == NormalColor:
   proc toRGB*(c:PietColor):tuple[r,g,b:uint8] =
@@ -39,6 +40,8 @@ when pietColorType == NormalColor:
     if r >= 192u8 and g >= 192u8 and b >= 192u8: return hue
     # normal
     return 6 + hue
+
+
 proc getPietColor*(img:PNGResult,start:int): PietColor =
   let
     r = cast[uint8](img.data[start])
@@ -51,3 +54,19 @@ proc getRGB*(img:PNGResult,start:int): tuple[r,g,b:uint8] =
     g = cast[uint8](img.data[start+1])
     b = cast[uint8](img.data[start+2])
   return (r,g,b)
+proc save*(self:Matrix[PietColor],filename:string="/tmp/piet.png",codelSize:int=1,open:bool=true) =
+  var pixels = newString(3 * self.width * self.height * codelSize * codelSize)
+  for x in 0..<self.width:
+    for y in 0..<self.height:
+      let (r,g,b)= self[x,y].toRGB()
+      for xi in 0..<codelSize:
+        for yi in 0..<codelSize:
+          let nx = x * codelSize + xi
+          let ny = y * codelSize + yi
+          let pos = nx + ny * self.width*codelSize
+          pixels[3 * pos + 0] = cast[char](r)
+          pixels[3 * pos + 1] = cast[char](g)
+          pixels[3 * pos + 2] = cast[char](b)
+  discard savePNG24(filename,pixels,self.width*codelSize,self.height*codelSize)
+  if open : discard startProcess("/usr/bin/open",args=[filename],options={})
+

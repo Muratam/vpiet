@@ -1,6 +1,6 @@
 import packages/common
 import packages/curse
-import color
+import pietcolor
 import confcolor
 
 proc toConsole*(pietMap:Matrix[PietColor]): string =
@@ -18,7 +18,7 @@ proc toConsole*(pietMap:Matrix[PietColor]): string =
         else:
           getColor6(r.to6,g.to6,b.to6).toBackColor() & ' '
       result &=  c
-    if y != pietMap.height - 1 : result &= "\n"
+    if y != pietMap.height - 1 : result &= endAll & "\n"
   result &= endAll & "\n"
 
 

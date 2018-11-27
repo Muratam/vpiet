@@ -1,25 +1,22 @@
-import common
+import packages/common
+import packages/pietbase
+import packages/curse
+import packages/frompiet
 import steganoutil
-import pietbase
-import pietize
-import pietmap
-import curse
-import makegraph
-import colordiff
+import pasm
 
-
-proc checkStegano1D(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+proc checkStegano1D(orders:seq[PasmOrder],base:Matrix[PietColor]) =
   if pietOrderType != TerminateAtGreater:
     quit("only TerminateAtGreater is allowed")
   # orders : inc dup ... push terminate
-  doAssert orders[^1].operation == Terminate         ,"invalid"
-  doAssert orders[0..^2].allIt(it.order == Operation),"invalid"
+  doAssert orders[^1].order == Terminate         ,"invalid"
+  doAssert orders[0..^2].allIt(it.pasmType == ExecOrder),"invalid"
   doAssert base.height == 1
   doAssert base.width >= orders.len()
 
 
 # 全体最適解を探す
-proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+proc stegano1D*(orders:seq[PasmOrder],base:Matrix[PietColor]) =
   checkStegano1D(orders,base)
   # result = newMatrix[PietColor](base.width,1)
   # https://photos.google.com/photo/AF1QipMlNFgMkP-_2AtsRZcYbPV3xkBjU0q8bKxql9p3?hl=ja
@@ -64,7 +61,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       proc d(color,dNop,dOrd,f:int) : DPKey = (color,nop+dNop,ord+dOrd,f)
       # 命令を進めた
       for i in 0..<chromMax:
-        update(d(i,0,0,0),d(i.getNextColor(order.operation),0,1,0))
+        update(d(i,0,0,0),d(i.getNextColor(order.order),0,1,0))
       # Nop (白 -> 白)
       for f in 0..<here(chromMax).len():
         update(d(chromMax,0,0,f),d(chromMax,1,0,f))
@@ -87,7 +84,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
               update(d(i,0,0,f),d(j,1,0,f-1))
         else:
           # 普通
-          if ord+1 < orders.len() and orders[ord+1].operation != Push:
+          if ord+1 < orders.len() and orders[ord+1].order != Push:
             update(d(i,0,0,0),d(i,1,0,0)) # 次Pushがわかってるのに増やすことはできない
           for f in 0..<min(here(i).len(),maxFund-1):
             update(d(i,0,0,f),d(i.getNextColor(Push),1,0,f+1))
@@ -133,7 +130,7 @@ proc stegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
     showPath(m)
 
 # 最良優先探索で局所最適解を探す
-proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
+proc quasiStegano1D*(orders:seq[PasmOrder],base:Matrix[PietColor]) =
   # ビームサーチでそれなりによいものを探す
   checkStegano1D(orders,base)
   const maxFrontierNum = 100
@@ -165,14 +162,14 @@ proc quasiStegano1D*(orders:seq[OrderAndArgs],base:Matrix[PietColor]) =
       for f in front:
         let hereColor = f.mat[f.x,f.y]
         if f.fund == 0 and hereColor != chromMax: # 命令を進めた
-          f.pushAs1D(hereColor.getNextColor(order.operation),1,0)
+          f.pushAs1D(hereColor.getNextColor(order.order),1,0)
         # Nop (* -> 白)
         f.pushAs1D(chromMax,0,0)
         if hereColor == chromMax: # (白 -> *)
           for i in 0..<chromMax: f.pushAs1D(i,0,0)
         else: # Fund(白では詰めない)
           f.pushAs1D(hereColor.getNextColor(Push),0,1)
-          if ord+1 < orders.len() and orders[ord+1].operation != Push:
+          if ord+1 < orders.len() and orders[ord+1].order != Push:
             f.pushAs1D(hereColor,0,0) # 次がPushというせいでNopなどもできない!!
           if f.fund > 0:
             f.pushAs1D(hereColor.getNextColor(Pop),0,-1)

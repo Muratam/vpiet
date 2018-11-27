@@ -6,7 +6,7 @@ import graph
 # seq[Edge] -> ASM
 
 
-proc toAsm(order:OrderAndSize,debug:bool=false) : string =
+proc toPasm(order:OrderAndSize,debug:bool=false) : string =
   proc impl(order:Order,size:int):string =
     case order
     of Add: return "add"
@@ -31,7 +31,7 @@ proc toAsm(order:OrderAndSize,debug:bool=false) : string =
   return impl(order.order,order.size)
 
 
-proc compileToAsmCode*(self:seq[Edge]):string =
+proc compileToPasmCode*(self:seq[Edge]):string =
   result = ""
   let outEdges = self.getOutEdgesIndexs()
   for i ,outEdge in outEdges:
@@ -46,7 +46,7 @@ proc compileToAsmCode*(self:seq[Edge]):string =
       elif i == 0:
         result &= "a{src}:\n".fmt()
       for order in orderAndSizes:
-        result &= "  {order.toAsm()}\n".fmt()
+        result &= "  {order.toPasm()}\n".fmt()
       if self[oe].orderAndSizes[^1].order != Terminate:
         let dstEdges = outEdges[self[oe].dst]
         case dstEdges.len():
@@ -55,12 +55,12 @@ proc compileToAsmCode*(self:seq[Edge]):string =
         else: quit("invalid branch")
 
 
-proc saveAsAsm*(self:seq[Edge],
-              asmFileName:string="/tmp/piet.asm") =
-  let code = self.compileToAsmCode()
-  let f = open(asmFileName,fmWrite)
+proc saveAsPasm*(self:seq[Edge],
+              pasmFileName:string="/tmp/piet.asm") =
+  let code = self.compileToPasmCode()
+  let f = open(pasmFileName,fmWrite)
   f.write(code)
   f.close()
-  discard startProcess("/usr/local/bin/code",args=[asmFileName],options={})
+  discard startProcess("/usr/local/bin/code",args=[pasmFileName],options={})
 
 

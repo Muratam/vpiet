@@ -1,4 +1,5 @@
 import packages/common
+import nimPNG
 import dpcc, order, conforder
 
 type
@@ -7,6 +8,7 @@ type
 
 const hueMax* = orderBlock.len()
 const lightMax* = orderBlock[0].len()
+const chromMax* = hueMax * lightMax
 const WhiteNumber* = hueMax * lightMax
 const BlackNumber* = WhiteNumber + 1
 const whiteOrder = Nop
@@ -50,7 +52,7 @@ proc decideOrder*(now,next:PietColor): Order =
   let lightDiff = (lightMax + (next.light - now.light) mod lightMax) mod lightMax
   return orderBlock[hueDiff][lightDiff]
 
-proc decideNext*(now:PietColor,order:Order): PietColor =
+proc searchNextPietColor*(now:PietColor,order:Order): PietColor =
   if order == whiteOrder:
     result.nwb = White
     return
@@ -64,5 +66,11 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
   echo now,order
   doAssert false,"cant decide color"
 
+# int16だが高速
+var colorTable = newSeqWith(PietColor.high.int+1,newSeqWith(Order.high.int+1,-1))
+proc getNextColor*(i:int,operation:Order):int = #i.PietColor.decideNext(operation)
+  if colorTable[i][operation.int] == -1:
+    colorTable[i][operation.int] = i.PietColor.searchNextPietColor(operation)
+  return colorTable[i][operation.int]
 
 

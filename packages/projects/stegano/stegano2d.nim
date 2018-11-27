@@ -1,15 +1,10 @@
-import steganoutil
-import common
-import steganoutil
-import pietbase
-import pietize
-import pietmap
-import curse
-import makegraph
-import colordiff
-import sets
-import hashes
-import tables
+#[
+
+import packages/[common,pietbase,frompiet,curse]
+import pasm,steganoutil
+import sets,hashes,tables
+
+# 定義 : 各マス:codel ? 各ブロック:block ?
 
 
 # まずは一本自由にTerminateまで作成.(x1000くらい解が得られるだろう)
@@ -20,8 +15,8 @@ import tables
 
 type
   OrderInfo* = tuple[
-    order:EMoveType,
-    operation:Order,
+    pasmType:PasmType,
+    order:Order,
     args:seq[string],
     isDst:bool,
     branchIndex:int
@@ -664,3 +659,4 @@ if isMainModule:
     sw.stop()
     echo sw
     stegano.save("./piet.png",codelSize=10)
+]#

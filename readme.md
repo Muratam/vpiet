@@ -1,42 +1,3 @@
-# TODO
-今分かりにくいので一旦全部リファクタリングしたい...
-そろそろ設計が気持ち悪くなってきた機がする (confクラスを作成してあげたい|orderandsize/orderandargsとか止めたい)
-common:
-pietbase:
-curse:
-asm <-> piet -> cpp
-stegano : asm + image -> piet
-
-# 機能
-- topiet : vpiet -> 回路図 Piet
-- steganopiet : ステガノっぽいPietを生成
-
-# vpiet
-1. can execute Piet on CUI ! (high speed !! big png file supported !!)
-2. can edit Piet on CUI ! (Cool!!)
-
-# Install
-```
-### install nim
-$ curl https://nim-lang.org/choosenim/init.sh -sSf | sh
-$ echo 'export PATH=~/.nimble/bin:$PATH' >> ~/.bashrc
-### install vpiet
-$ git clone git@github.com:Muratam/vpiet.git
-$ cd vpiet
-$ nimble install
-```
-
-# Usage
-```
-$ vpiet <filename>     # edit
-$ vpiet -e <filename>  # execute
-```
-
-# Edit
-![](./images/iikanji.gif)
-![](./images/exec.png)
-
-
 # FAQ
 - codel size :: 1
 - utf-8 support
@@ -48,3 +9,16 @@ $ vpiet -e <filename>  # execute
 - IN(Number) / IN(Char) example:
   - inn inc at `100 a` -> [100,20(=SPACE)]
   - inn inn at `100 200` -> [100,200]
+
+# PASM (Piet Assembly)
+```
+文法:
+基本命令:
+  push n
+  pop add sub mul div mod not greater dup roll outn outc inn inc terminate
+  <label>:
+  go <label>
+  go <label> <label> 条件に応じてジャンプ(jne / not not するのでトップは消える)
+応用命令:
+コメント: #
+```
