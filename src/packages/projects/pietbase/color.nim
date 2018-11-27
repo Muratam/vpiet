@@ -1,4 +1,4 @@
-import ../common
+import packages/common
 import dpcc, order, orderconf
 
 type
@@ -63,3 +63,6 @@ proc decideNext*(now:PietColor,order:Order): PietColor =
       return
   echo now,order
   doAssert false,"cant decide color"
+
+
+

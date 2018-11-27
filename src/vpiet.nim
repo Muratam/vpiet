@@ -1,3 +1,4 @@
+#[
 import common
 import pietbase
 import osproc
@@ -20,3 +21,6 @@ if isMainModule:
       if params.anyIt(it == "-d"): graph.showGraph()
       if params.anyIt(it == "-e"): graph.executeAsCpp()
       if params.anyIt(it == "-v"): graph.saveAsVPiet()
+]#
+import common
+import curse

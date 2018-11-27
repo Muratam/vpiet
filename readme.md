@@ -1,6 +1,6 @@
 # TODO
 今分かりにくいので一旦全部リファクタリングしたい...
-そろそろ設計が気持ち悪くなってきた機がする
+そろそろ設計が気持ち悪くなってきた機がする (confクラスを作成してあげたい|orderandsize/orderandargsとか止めたい)
 common:
 pietbase:
 curse:
