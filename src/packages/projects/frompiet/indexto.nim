@@ -1,4 +1,4 @@
-import common
+import packages/common
 import pietmap
 
 # index -> { index / size } の接続グラフ

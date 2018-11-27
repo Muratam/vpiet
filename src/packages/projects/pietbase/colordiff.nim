@@ -1,6 +1,7 @@
-import common
-import pietbase
-import curse
+import packages/common
+import packages/curse
+import color
+import confcolor
 
 proc toConsole*(pietMap:Matrix[PietColor]): string =
   result = ""
@@ -22,7 +23,7 @@ proc toConsole*(pietMap:Matrix[PietColor]): string =
 
 
 # 色差関数
-proc ciede2000*(l1,a1,b1,l2,a2,b2:float):float{. importc: "CIEDE2000" header: "../src/ciede2000.h".}
+proc ciede2000*(l1,a1,b1,l2,a2,b2:float):float{. importc: "CIEDE2000" header: "../packages/projects/pietbase/ciede2000.h".}
 
 var ciede2000Table = newSeqWith(maxColorNumber+1, newSeqWith(maxColorNumber+1,-1))
 

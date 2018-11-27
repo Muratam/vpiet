@@ -1,5 +1,5 @@
 import packages/common
-import dpcc, order, orderconf
+import dpcc, order, conforder
 
 type
   NWB* = enum None,White,Black

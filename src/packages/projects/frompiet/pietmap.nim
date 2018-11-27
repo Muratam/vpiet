@@ -1,8 +1,7 @@
-import common
+import packages/common
+import packages/pietbase
 import nimPNG
-import pietbase
 export pietbase
-import colordiff
 # PNG ファイルから PietColor ブロック毎に色とindexを付ける
 
 type
@@ -51,7 +50,7 @@ proc toColorMap*(img:PNGResult): Matrix[PietColor] =
     for x in 0..<img.width:
       let start = n * (x + y * img.width)
       let (r,g,b) = img.getRGB(start)
-      result[x,y] = colordiff.toNearlestPietColor(r,g,b)
+      result[x,y] = toNearlestPietColor(r,g,b)
       # result[x,y] = img.getPietColor(start)
 
 

@@ -2,7 +2,7 @@ import stdimport
 # Union Find
 type UnionFindTree[T] = ref object
   parent: seq[int]
-proc newUnionFindTree(n:int) : UnionFindTree =
+proc newUnionFindTree*(n:int) : UnionFindTree =
   new(result)
   result.parent = newSeqWith(n,-1)
 proc root(self:var UnionFindTree,x:int):int =
@@ -10,7 +10,7 @@ proc root(self:var UnionFindTree,x:int):int =
   else:
     self.parent[x] = self.root(self.parent[x])
     return self.parent[x]
-proc merge(self:var UnionFindTree,x,y:int):bool=
+proc merge*(self:var UnionFindTree,x,y:int):bool=
   var x = self.root(x)
   var y = self.root(y)
   if x == y : return false

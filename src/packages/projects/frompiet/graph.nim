@@ -1,5 +1,6 @@
-import common
+import packages/common
 import pietmap, indexto
+import osproc
 import osproc
 
 type
@@ -8,7 +9,7 @@ type
   OrderAndSize* = tuple[order:Order,size:int]
   Edge* = tuple[src,dst:int,orderAndSizes:seq[OrderAndSize],branch:int]
 
-proc `$`(self:Edge):string =
+proc `$`*(self:Edge):string =
   "[{self.src}->{self.dst}:br={self.branch}:or={self.orderAndSizes.len()}]".fmt()
 
 
@@ -24,7 +25,7 @@ proc isSame(x,y:Edge,checkBranch:bool=true):bool =
   return true
 
 # branch :: dp cc で変更時(realNextとかMerge/DevideNopバグがない)
-proc makeShortEdges(indexTo:IndexTo) : seq[ShortEdge] =
+proc makeShortEdges*(indexTo:IndexTo) : seq[ShortEdge] =
   # block数 x 8 あるのをまず削減
   var nodeIndices = newSeq[EightDirection[int]](indexTo.blockSize.len())
   for i in 0..<nodeIndices.len():nodeIndices[i] = (-1,-1,-1,-1,-1,-1,-1,-1,)
@@ -77,11 +78,6 @@ proc makeShortEdges(indexTo:IndexTo) : seq[ShortEdge] =
   discard search(0,newDP(),newCC())
   return to
 
-proc toEdges(self:seq[ShortEdge]):seq[Edge] =
-  result = @[]
-  for edge in self:
-    let (src,dst,order,branch,size) = edge
-    result &= (src,dst,@[(order,size)],branch)
 
 proc getMaxNodeIndex(self:seq[Edge]): int =
   self.mapIt(max(it.src,it.dst)).max() + 1
@@ -193,17 +189,22 @@ proc filterExitBranch(self:var seq[Edge]) : bool =
   self.deleteNeedlessEdges()
 
 
+proc toEdges*(self:seq[ShortEdge]):seq[Edge] =
+  result = @[]
+  for edge in self:
+    let (src,dst,order,branch,size) = edge
+    result &= (src,dst,@[(order,size)],branch)
+  while true:
+    var updated = false
+    updated = updated or result.mergeBridge()
+    updated = updated or result.filterExitBranch()
+    if not updated: break
+
 # グラフを作成
 proc newGraph*[T](base:T) :seq[Edge]=
   let indexTo = base.newPietMap().newIndexTo()
-  var to = indexTo.makeShortEdges().toEdges()
-  while true:
-    # echo "check"
-    var updated = false
-    updated = updated or to.mergeBridge()
-    updated = updated or to.filterExitBranch()
-    if not updated: break
-  return to
+  var edges = indexTo.makeShortEdges().toEdges()
+
 if isMainModule:
   let params = commandLineParams()
   if params.len() == 0: quit("no params")

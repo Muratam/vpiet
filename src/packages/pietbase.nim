@@ -1,4 +1,3 @@
 
-import projects/pietbase/[dpcc, order, color, orderconf, colorconf]
-export dpcc, order, color, orderconf, colorconf
-
+import projects/pietbase/[dpcc, order, color, conforder, confcolor,colordiff]
+export dpcc, order, color, conforder, confcolor,colordiff
