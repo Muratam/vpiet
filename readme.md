@@ -1,3 +1,12 @@
+# TODO
+今分かりにくいので一旦全部リファクタリングしたい...
+そろそろ設計が気持ち悪くなってきた機がする
+common:
+pietbase:
+curse:
+asm <-> piet -> cpp
+stegano : asm + image -> piet
+
 # 機能
 - topiet : vpiet -> 回路図 Piet
 - steganopiet : ステガノっぽいPietを生成
