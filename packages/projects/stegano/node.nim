@@ -27,37 +27,13 @@ type
   Codel* = tuple[x, y: int, color: PietColor]
   Key* = tuple[fund, ord: int]
 
-
+# getters
 proc width*(env: NodeEnv): int = env.img.width
 proc height*(env: NodeEnv): int = env.img.height
 proc get*[T](a: var seq[seq[T]], k: Key): var T = a[k.ord][k.fund]
 
-proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
-    fund: Stack[int]): Node =
-  new(result)
-  result.val = val
-  result.x = x
-  result.y = y
-  result.mat = mat
-  result.dp = dp
-  result.cc = cc
-  result.fund = fund
 
-template newNodeIt*(node: Node, op: untyped): Node =
-  var it {.inject.}: Node
-  new(it)
-  it.val = node.val
-  it.x = node.x
-  it.y = node.y
-  it.dp = node.dp
-  it.cc = node.cc
-  op
-  if it.mat == nil: it.mat = node.mat.deepCopy()
-  if it.fund == nil: it.fund = node.fund.deepCopy()
-  it
-
-
-# val(add distance),mat(update to the color)
+# 1コーデル更新 val(add distance),mat(update to the color)
 proc update*(val: var int, color, baseColor: PietColor) = val += distance(
     color, baseColor)
 proc update*(env: NodeEnv, c: Codel, val: var int) = val.update(c.color,
@@ -128,6 +104,29 @@ proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo],
   val.update(c.color, env.img[c.x, c.y])
   return update(env, c, mat)
 
+# constructors
+proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
+    fund: Stack[int]): Node =
+  new(result)
+  result.val = val
+  result.x = x
+  result.y = y
+  result.mat = mat
+  result.dp = dp
+  result.cc = cc
+  result.fund = fund
+template newNodeIt*(node: Node, op: untyped): Node =
+  var it {.inject.}: Node
+  new(it)
+  it.val = node.val
+  it.x = node.x
+  it.y = node.y
+  it.dp = node.dp
+  it.cc = node.cc
+  op
+  if it.mat == nil: it.mat = node.mat.deepCopy()
+  if it.fund == nil: it.fund = node.fund.deepCopy()
+  it
 proc newEnv*(
     img: Matrix[PietColor],
     orders: seq[PasmOrder],
@@ -154,12 +153,12 @@ proc newEnv*(
   result.completedMin = EPS
   doAssert result.width < int16.high and result.height < int16.high
 
+# front next stored を各iterate-progress毎に更新
 proc getFront*(env: NodeEnv, ord: int): seq[Node] =
   result = @[]
   for fr in env.fronts[ord]:
     for f in fr:
       result &= f
-
 proc prepare*(env: NodeEnv) =
   env.nexts = newSeqWith(env.orders.len()+1, newSeqWith(env.maxFundLevel,
       newBinaryHeap[Node](proc(x, y: Node): int = y.val - x.val)))
@@ -170,21 +169,18 @@ proc prepare*(env: NodeEnv) =
       it].mapIt(it.len()).sum() > 0).max()
   env.maxFunds = toSeq(0..<env.maxFundLevel).mapIt(env.maxFrontierNum div (
       1 + 4 * it))
-
 proc getMaxFunds*(env: NodeEnv, k: Key): int =
   let trackbacked =
     (k.ord - env.maxNonNilFrontIndex + env.maxTrackBackOrderLen).float /
       env.maxTrackBackOrderLen.float
   return int(env.maxFunds[k.fund].float * max(1.0, trackbacked))
-
-# 命令を実行できる人の方が偉いので強い重みをつける()
 proc getStoredWorstVal*(env: NodeEnv, k: Key): int =
+  # 命令を実行できる人の方が偉いので強い重みをつける()
   if k.fund >= env.maxFundLevel: return -1 # 越えたときも-1で簡易的に弾く
   if env.nexts.get(k).len() < env.getMaxFunds(k): return min(EPS,
       env.completedMin)
   if env.nexts.get(k).len() == 0: return min(EPS, env.completedMin)
   return min(env.nexts.get(k).top().val, env.completedMin)
-
 proc setupNextFronts*(env: NodeEnv) =
   let nextItems = (proc(): seq[seq[seq[Node]]] =
     result = newSeqWith(env.orders.len()+1, newSeqWith(env.maxFundLevel,
@@ -195,7 +191,6 @@ proc setupNextFronts*(env: NodeEnv) =
         result[i][j] &= env.nexts[i][j].items()
     )()
   env.fronts = nextItems.mapIt(it.mapIt(it.sorted((a, b)=>a.val-b.val)))
-
 proc checkIterateResult*(env: NodeEnv): bool =
   result = true
   let maxes = env.fronts.mapIt(it.mapIt(it.len()).sum())
@@ -218,7 +213,6 @@ proc checkIterateResult*(env: NodeEnv): bool =
     break
   if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0:
     return false
-
 proc getResult*(env: NodeEnv): Matrix[PietColor] =
   var front = env.fronts[^1][0]
   proc embedNotdecided(f: var Node) =

@@ -4,6 +4,7 @@ import pasm, steganoutil, blockinfo, node
 import sets, hashes, tables
 
 type Target* = tuple[env: NodeEnv, node: Node, ord: int]
+# スキップ関数
 proc searchNotVisited(node: Node): NotVisited =
   searchNotVisited(node.mat, node.x, node.y, node.dp, node.cc)
 proc currentBlock(node: Node): BlockInfo = node.mat[node.x, node.y]
@@ -14,7 +15,7 @@ proc nextKey(t: Target, d: Key): Key =
 proc currentOrder(t: Target): PasmOrder = t.env.orders[t.ord]
 proc toNextState(mat: var Matrix[BlockInfo], node: Node): NextStateResult =
   mat.toNextState(node.x, node.y, node.dp, node.cc)
-
+# storedValueや過去の制約をチェックして,更新できれば新しい結果を返す
 proc tryUpdate(t: Target, c: Codel, dKey: Key):
     tuple[ok: bool, val: int, mat: Matrix[BlockInfo]] =
   template mistaken(): untyped = (false, -1, newMatrix[BlockInfo](0, 0))
@@ -26,7 +27,7 @@ proc tryUpdate(t: Target, c: Codel, dKey: Key):
   var newVal = t.node.val
   if not t.env.update(c, newMat, newVal): return mistaken
   return (true, newVal, newMat)
-
+# 未踏の地 でかつ storedValueや過去の制約を満たすかどうかチェック
 proc tryUpdateNotVisited(t: Target, color: PietColor, dKey: Key,
     onlyNil: bool = false,
     onlySameColor: bool = false,
@@ -48,7 +49,7 @@ proc tryUpdateNotVisited(t: Target, color: PietColor, dKey: Key,
   if onlyNotUsedCCDP and t.node.mat[nx, ny].endPos[cc, dp].used: return false
   return true
 
-# 偶然にも全く同じ画像が作られてしまうことがあるので,同じものがないかを確認してhashを取る必要がある
+# 偶然同じ画像が作られてしまうことがあるので,確認しつつ上位の値を保存
 proc store(env: NodeEnv, node: Node, ord: int) =
   let k: Key = (node.fund.len(), ord)
   if k.fund >= env.maxFundLevel: return
@@ -61,6 +62,7 @@ proc store(env: NodeEnv, node: Node, ord: int) =
     # exclしなくてもいいかな
     discard env.nexts.get(k).pop()
 
+# 8方向とも全て塞がっているか確認し,そうであれば+1に値を保存
 proc checkTerminate(t: Target) =
   var newMat = t.node.mat.deepCopy()
   var dp = t.node.dp
@@ -81,6 +83,7 @@ proc checkTerminate(t: Target) =
     it.cc = cc
   t.env.store(nextNode, t.ord+1)
 
+# ブロック内 内の 1codel を伸ばしてみる
 proc extendBlock(t: Target) =
   let here = t.node.currentBlock
   if here.color >= chromMax: return
@@ -103,6 +106,7 @@ proc extendBlock(t: Target) =
       if t.currentOrder.order == Terminate:
         (t.env, nextNode, t.ord).checkTerminate()
 
+# 命令を実行し,dKeyに保存する
 proc decide(t: Target, order: Order, dKey: Key,
     callback: proc(_: var Node): bool = (proc(_: var Node): bool = true)) =
   let here = t.node.currentBlock
@@ -131,12 +135,14 @@ proc decide(t: Target, order: Order, dKey: Key,
   if not nextNode.callback(): return
   store(t.env, nextNode, t.ord+dKey.ord)
 
+# 命令を全て完了した場合はそのコピーを置く
 proc processLastOrder(env: NodeEnv, front: seq[Node], ord: int) =
   if ord != env.orders.len(): return
   if front.len() > 0: env.completedMin = front.mapIt(it.val).max() + 1
   for f in front: store(env, f, ord)
   if front.len() > 0: env.completedMin = front.mapIt(it.val).min()
 
+# 今しなければならない命令を実行する
 proc doOrder(t: Target) =
   let here = t.node.currentBlock()
   if here.color >= chromMax: return
@@ -147,6 +153,7 @@ proc doOrder(t: Target) =
     t.currentOrder.args[0].parseInt() != here.sameBlocks.len(): return
   t.decide(order, (0, 1))
 
+# 行き先に白を置いてみる
 proc goWhite(t: Target) =
   let here = t.node.currentBlock()
   if here.color == WhiteNumber:
@@ -192,6 +199,7 @@ proc goWhite(t: Target) =
         t.node.fund.deepCopy())
     store(t.env, nextNode, t.ord)
 
+# 行き先に黒を置いてみる
 proc pushBlack(t: Target) =
   let here = t.node.currentBlock
   if here.color >= chromMax: return # 白で壁にぶつからないように
@@ -208,6 +216,7 @@ proc pushBlack(t: Target) =
     it.mat = newMat
   store(t.env, nextNode, t.ord)
 
+# 余剰分を変更するような操作
 template doFundIt(t: Target, order: Order, dFund: int,
     operation: untyped): untyped =
   let here = t.node.currentBlock
@@ -218,6 +227,7 @@ template doFundIt(t: Target, order: Order, dFund: int,
       node = it
       return true)
 
+# 余剰分を変更するような操作を全て試す
 proc doFund(t: Target) =
   t.doFundIt(Push, 1): it.fund.push(it.mat[it.x, it.y].sameBlocks.len())
   if t.node.fund.len() > 0:
@@ -264,6 +274,7 @@ proc doFund(t: Target) =
       for i in 0..<next: roll.add(it.fund.pop())
       for i in 0..<next: it.fund.push(roll[(i + top) mod next])
 
+# 全部試す
 proc processFront*(env: NodeEnv, ord: int) =
   let front = env.getFront(ord)
   if ord == env.orders.len():
