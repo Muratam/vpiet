@@ -37,21 +37,21 @@
  * @param x a value
  * @return true if x can be assumed to be 0
  */
-inline int tolerance_zero(const double x) { return fabs(x) < 1e-9; }
+int tolerance_zero(const double x) { return fabs(x) < 1e-9; }
 
 /**
  * cosine
  * @param degree angle [degree]
  * @return cosine value
  */
-inline double cosd(const double degree) { return cos(degree * M_PI / 180.0); }
+double cosd(const double degree) { return cos(degree * M_PI / 180.0); }
 
 /**
  * sine
  * @param degree angle [degree]
  * @return sine value
  */
-inline double sind(const double degree) { return sin(degree * M_PI / 180.0); }
+double sind(const double degree) { return sin(degree * M_PI / 180.0); }
 
 /**
  * arctangent (four quadrant)
@@ -59,7 +59,7 @@ inline double sind(const double degree) { return sin(degree * M_PI / 180.0); }
  * @param x x-coordinate
  * @return angle [degree]
  */
-inline double fqatan(const double y, const double x) {
+double fqatan(const double y, const double x) {
   double t = atan2(y, x) / M_PI * 180.0;
 
   if (t < 0.0) t += 360.0;
@@ -72,7 +72,7 @@ inline double fqatan(const double y, const double x) {
  * @param x a value
  * @return f7(x)
  */
-inline double f7(const double x) {
+double f7(const double x) {
   // if x is small, using the following approx.
   if (x < 1.0) return pow(x / 25.0, 3.5);
 
