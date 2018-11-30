@@ -11,6 +11,8 @@ const lightMax* = orderBlock[0].len()
 const chromMax* = hueMax * lightMax
 const WhiteNumber* = hueMax * lightMax
 const BlackNumber* = WhiteNumber + 1
+const WhiteColor* = WhiteNumber.PietColor
+const BlackColor* = BlackNumber.PietColor
 const whiteOrder = Nop
 const blackOrder = Wall
 const maxColorNumber* = BlackNumber
@@ -61,8 +63,8 @@ proc searchNextPietColor*(now: PietColor, order: Order): PietColor =
   for h, byHue in orderblock:
     for l, o in byHue:
       if o != order: continue
-      result.hue = now.hue + h
-      result.light = now.light + l
+      result.hue = (now.hue + h) mod hueMax
+      result.light = (now.light + l) mod lightMax
       return
   echo now, order
   doAssert false, "cant decide color"

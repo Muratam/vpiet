@@ -8,6 +8,9 @@ proc toConsole*(pietMap: Matrix[PietColor]): string =
   for y in 0..<pietMap.height:
     for x in 0..<pietMap.width:
       let color = pietMap[x, y]
+      if color.int < 0:
+        result &= getColor6(5, 5, 5).toBackColor() & ' '
+        continue
       let (r, g, b) = color.toRGB()
       proc to6(i: uint8): int = (if i == 0xff: 5 elif i == 0xc0: 3 else: 1)
       let c = case color:

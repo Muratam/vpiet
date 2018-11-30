@@ -73,14 +73,14 @@ proc checkAdjasts*(mat: Matrix[BlockInfo], x, y: int, color: PietColor): seq[
     if mat[nx, ny].color != color: continue
     if mat[nx, ny] in result: continue # 大丈夫...?
     result &= mat[nx, ny]
-
-proc getNextPos*(endPos: EightDirection[UsedInfo], dp: DP, cc: CC): tuple[x,
-    y: int] =
+type IntPos* = tuple[x, y: int]
+proc getNextPos*(endPos: EightDirection[UsedInfo], dp: DP, cc: CC): IntPos =
   let (x, y) = endPos[cc, dp].pos
   let (dX, dY) = dp.getdXdY()
   return (x + dX, y + dY)
+type NotVisited* = tuple[ok: bool, dp: DP, cc: CC]
 proc searchNotVisited*(mat: Matrix[BlockInfo], x, y: int, startDP: DP,
-    startCC: CC): tuple[ok: bool, dp: DP, cc: CC] =
+    startCC: CC): NotVisited =
   # 次に行ったことのない壁ではない場所にいけるかどうかだけチェック(更新はしない)
   doAssert mat[x, y] != nil and mat[x, y].color < chromMax
   var dp = startDP
@@ -105,8 +105,9 @@ proc updateUsingNextPos*(mat: var Matrix[BlockInfo], x, y: int, dp: DP,
     newBlock.endPos[cc, dp] = (true, newBlock.endPos[cc, dp].pos)
     for b in newBlock.sameBlocks: mat.data[b] = newBlock
   return mat[x, y].endPos.getNextPos(dp, cc)
+type NextStateResult* = tuple[ok: bool, x, y: int, dp: DP, cc: CC]
 proc toNextState*(mat: var Matrix[BlockInfo], x, y: int, startDP: DP,
-    startCC: CC): tuple[ok: bool, x, y: int, dp: DP, cc: CC] =
+    startCC: CC): NextStateResult =
   # 使用したことのない場所で新たに行けるならそれを返却
   doAssert mat[x, y] != nil and mat[x, y].color < chromMax
   template failed(): untyped = (false, x, y, startDP, startCC)
