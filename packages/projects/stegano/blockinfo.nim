@@ -33,8 +33,12 @@ let whiteBlockInfo* = newBlockInfo(nil, -1, -1, WhiteNumber)
 let blackBlockInfo* = newBlockInfo(nil, -1, -1, BlackNumber)
 
 proc hashing*(mat: Matrix[BlockInfo]): Hash =
+  # 速度のために正確さを犠牲にしたらこうなるが...
+  # for d in mat.data:
+  #   result += result shl 5 + (if d == nil: nilhash else: hash(d.color))
+  const nilhash = hash(-1)
   for d in mat.data:
-    result = result !& hash(if d == nil: -1 else: d.color)
+    result = result !& (if d == nil: nilhash else: hash(d.color))
   result = !$result
 
 proc deepCopy*(x: BlockInfo): BlockInfo =

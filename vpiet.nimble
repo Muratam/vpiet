@@ -7,4 +7,4 @@ srcDir        = "src"
 bin           = @["vpiet"]
 
 # Dependencies
-requires "nim >= 0.18.0","nimPNG"
+requires "nim >= 0.19.0","nimPNG"

@@ -2,7 +2,6 @@
 import packages/[common, pietbase, frompiet, curse]
 import pasm, steganoutil, blockinfo
 import sets, hashes, tables
-# import nimprof
 
 type
   NodeObject = object
