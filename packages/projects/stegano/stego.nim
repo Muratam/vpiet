@@ -2,8 +2,7 @@
 import packages/[common, pietbase, frompiet, curse]
 import pasm, steganoutil, blockinfo
 import sets, hashes, tables
-
-
+# import nimprof
 
 type
   NodeObject = object
@@ -32,7 +31,6 @@ type
 proc width(env: NodeEnv): int = env.img.width
 proc height(env: NodeEnv): int = env.img.height
 proc get[T](a: var seq[seq[T]], k: Key): var T = a[k.ord][k.fund]
-proc newCodel(x, y, color: int): Codel = (x, y, color.PietColor)
 
 proc newNode(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
     fund: Stack[int]): Node =
@@ -177,10 +175,10 @@ proc getMaxFunds(env: NodeEnv, k: Key): int =
 # 命令を実行できる人の方が偉いので強い重みをつける()
 proc getStoredWorstVal(env: NodeEnv, k: Key): int =
   if k.fund >= env.maxFundLevel: return -1 # 越えたときも-1で簡易的に弾く
-  var next = env.nexts.get(k)
-  if next.len() < env.getMaxFunds(k): return min(EPS, env.completedMin)
-  if next.len() == 0: return min(EPS, env.completedMin)
-  return min(next.top().val, env.completedMin)
+  if env.nexts.get(k).len() < env.getMaxFunds(k): return min(EPS,
+      env.completedMin)
+  if env.nexts.get(k).len() == 0: return min(EPS, env.completedMin)
+  return min(env.nexts.get(k).top().val, env.completedMin)
 
 
 type Target = tuple[env: NodeEnv, node: Node, ord: int]
