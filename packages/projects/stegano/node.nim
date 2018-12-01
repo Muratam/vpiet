@@ -214,6 +214,7 @@ proc setupNextFronts*(env: NodeEnv) =
   env.fronts = nextItems.mapIt(it.mapIt(it.sorted((a, b)=>a.val-b.val)))
 proc checkIterateResult*(env: NodeEnv): bool =
   result = true
+  echo env.orders
   let maxes = env.fronts.mapIt(it.mapIt(it.len()).sum())
   for i in 0..<env.fronts.len():
     let front = env.fronts[^(1+i)]

@@ -45,12 +45,17 @@ proc getPietOrder(): seq[EmbOrder] =
   for i in 0..<1: result &= orders
   result &= Terminate.newEmbOrder()
 
-#[
-proc getBranchedOrders(): seq[PasmOrder] =
+
+proc getBranchedOrders(): seq[EmbOrder] =
   result = @[]
-  proc d(ord: Order, n: int = -1): tuple[ord: Order, arg: seq[string]] =
-    if n <= 0 and ord != Push: return (ord, @[])
-    else: return (ord, @[$n])
+  var connectFaze = newSeq[EmbOrder]()
+  var index = -1
+  proc d(ord: Order, n: int = -1): EmbOrder =
+    index += 1
+    if ord == Push: return newPushEmbOrder(n)
+    if ord in [Switch, Pointer]:
+      connectFaze &= newConnectEmbOrder(index, n)
+    return ord.newEmbOrder()
   # ---2 1 1 1 1 1 2 と出力-----------------
   # A[push 2 && outn && push 5]
   # do : B[push 1 && outn && push 1 && sub && dup not not]: while!(pop == 0)
@@ -65,23 +70,10 @@ proc getBranchedOrders(): seq[PasmOrder] =
       d(Pointer, 3), # B ((絶対アドレス 0-indexed) 1 のときは 3番目マスへジャンプしたい)
     d(Push, 2), d(OutN), # C
   ]
-  # 命令列中での到着地の番号
-  let branchDstOrderIndexes =
-    orders.filterIt(it.ord == Pointer).mapIt(it.arg[0].parseInt())
-  # 作成ブランチ列での番号
-  var branchMaxIndex = -1
-  for i, oa in orders:
-    let (order, args) = oa
-    let isDst = i in branchDstOrderIndexes
-    if isDst: branchMaxIndex += 1
-    let branchIndex = if isDst: branchMaxIndex else: -1
-    result &= (Operation, order, args, isDst, branchIndex)
-  block:
-    let isDst = orders.len() in branchDstOrderIndexes
-    if isDst: branchMaxIndex += 1
-    let branchIndex = if isDst: branchMaxIndex else: -1
-    result &= (MoveTerminate, Terminate, @[], isDst, branchIndex)
-]#
+  result &= orders
+  result &= Terminate.newEmbOrder()
+  result &= connectFaze
+
 
 if isMainModule:
   calcTime:
@@ -98,7 +90,7 @@ if isMainModule:
       # .quasiStegano2D()
     else:
       let baseImg = commandLineParams()[0].newPietMap().pietColorMap
-      const orders = getPietOrder()
+      const orders = getBranchedOrders() #getPietOrder()
       let stegano = newEnv(
         baseImg, orders,
         maxFrontierNum = 720,

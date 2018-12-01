@@ -50,13 +50,14 @@ proc newPushEmbOrder*(size: int): EmbOrder =
   assert size > 0
   return (false, Push, @[size])
 proc newEmbOrder*(order: Order): EmbOrder = (false, order, @[])
-proc newConnectOrder*(src, dst: int): EmbOrder =
-  (true, ErrorOrder, @[src, dst])
+proc newConnectEmbOrder*(src, dst: int): EmbOrder =
+  assert src >= 0 and dst >= 0
+  return (true, ErrorOrder, @[src, dst])
 proc `$`*(orders: seq[EmbOrder]): string =
   result = ""
   for order in orders:
     if order.isConnect:
-      result &= fmt"CONN:{order.srcIndex}->{order.dstIndex}"
+      result &= fmt"[{order.srcIndex}->{order.dstIndex}]"
     else:
       if order.order == Push: result &= fmt"+{order.getPushSize()}"
       else: result &= $order.order
