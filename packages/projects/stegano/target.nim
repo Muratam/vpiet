@@ -69,6 +69,7 @@ proc checkTerminate(t: Target) =
     it.mat = newMat
     it.dp = dp
     it.cc = cc
+  nextNode.registDecidedPos()
   t.env.store(nextNode, t.ord+1)
 
 # ブロック内 内の 1codel を伸ばしてみる
@@ -118,9 +119,18 @@ proc decide(t: Target, order: Order, dKey: Key,
     return
   var newVal = t.node.val
   if not t.env.update((nx, ny, color), newMat, newVal): return
-  var nextNode = newNode(newVal, nx, ny, newMat, dp, cc, t.node.fund.deepCopy())
+  var nextNode = t.node.newNodeIt:
+    it.val = newVal
+    it.x = nx
+    it.y = ny
+    it.mat = newMat
+    it.dp = dp
+    it.cc = cc
   if order == Push: newMat[t.node.x, t.node.y].sizeFix = true
   if not nextNode.callback(): return
+  if dKey.ord > 0:
+    assert dKey.ord == 1
+    nextNode.registDecidedPos()
   store(t.env, nextNode, t.ord+dKey.ord)
 
 # 命令を全て完了した場合はそのコピーを置く
@@ -183,8 +193,13 @@ proc goWhite(t: Target) =
     var newVal = t.node.val
     if newMat[nx, ny] != nil: quit("yabee")
     if not t.env.update((nx, ny, WhiteColor), newMat, newVal): return
-    let nextNode = newNode(newVal, nx, ny, newMat, dp, cc,
-        t.node.fund.deepCopy())
+    let nextNode = t.node.newNodeIt:
+      it.val = newVal
+      it.x = nx
+      it.y = ny
+      it.mat = newMat
+      it.dp = dp
+      it.cc = cc
     store(t.env, nextNode, t.ord)
 
 # 行き先に黒を置いてみる

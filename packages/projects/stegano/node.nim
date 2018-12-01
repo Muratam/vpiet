@@ -11,7 +11,7 @@ type
     dp*: DP
     cc*: CC
     fund*: Stack[int]
-    #decidedPos*: seq[int16]   # i -> xy表記
+    decidedPos*: seq[int]     # i -> xy表記
   Node* = ref NodeObject not nil
   NodeEnv* = ref object
     img*: Matrix[PietColor]
@@ -108,7 +108,7 @@ proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo],
 
 # constructors
 proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
-    fund: Stack[int]): Node =
+    fund: Stack[int], decidedPos: seq[int]): Node =
   new(result)
   result.val = val
   result.x = x
@@ -117,6 +117,8 @@ proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
   result.dp = dp
   result.cc = cc
   result.fund = fund
+  result.decidedPos = decidedPos
+
 template newNodeIt*(node: Node, op: untyped): Node =
   var it {.inject.}: Node
   new(it)
@@ -128,6 +130,7 @@ template newNodeIt*(node: Node, op: untyped): Node =
   op
   if it.mat == nil: it.mat = node.mat.deepCopy()
   if it.fund == nil: it.fund = node.fund.deepCopy()
+  if it.decidedPos.len == 0: it.decidedPos = node.decidedPos
   it
 proc newEnv*(
     img: Matrix[PietColor],
@@ -142,7 +145,7 @@ proc newEnv*(
       let state = (0, 0, c.PietColor)
       if not env.update(state, initMat, val): quit("yabee")
       env.fronts[0][0] &= newNode(val, 0, 0, initMat, newDP(), newCC(),
-          newStack[int]())
+          newStack[int](), @[env.img.getI(0, 0)])
   new(result)
   result.img = img
   result.orders = orders
@@ -222,8 +225,12 @@ proc checkIterateResult*(env: NodeEnv): bool =
     if front[0].len() == 0: continue
     # 最後のプロセス省略
     for j in 0..<1.min(front[0].len()):
+      let f = front[0][j]
       echo maxes
-      echo front[0][j].mat.toConsole(), front[0][0].val, "\n"
+      echo f.mat.toConsole(), f.val, "\n"
+      for p in f.decidedPos:
+        stdout.write f.mat.getX(p), "-", f.mat.getY(p), " "
+      echo ""
       echo "memory  :", getTotalMem() div 1024 div 1024, "MB"
     break
   if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0:
@@ -293,3 +300,5 @@ proc getResult*(env: NodeEnv): Matrix[PietColor] =
   echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
   echo env.orders
 
+proc registDecidedPos*(node: Node) =
+  node.decidedPos &= node.mat.getI(node.x, node.y)
