@@ -1,12 +1,13 @@
 import packages/[common, pietbase, frompiet, curse]
 import steganoutil
 import sets, hashes, tables
-
+import options
 
 type
   Pos* = tuple[x, y: int16] # 25:390MB -> 25:268MB # メモリが 2/3で済む(int8ではほぼ変化なし)
   # マスを増やすという操作のために今のブロックの位置配列を持っておく
   UsedInfo* = tuple[used: bool, pos: Pos]
+  Cursor* = tuple[x, y: int, dp: DP, cc: CC]
 
   BlockInfoObject* = object
     # 有彩色以外では color以外の情報は参考にならないことに注意
@@ -17,7 +18,14 @@ type
     sizeFix*: bool # Pushしたのでこのサイズでなくてはならないというフラグ
   BlockInfo* = ref BlockInfoObject
 
-
+proc `[]`*[T](self: Matrix[T], cursor: Cursor): T =
+  self[cursor.x, cursor.y]
+proc `[]`*[T](self: EightDirection[T], cursor: Cursor): T =
+  self[cursor.cc, cursor.dp]
+proc `[]=`*[T](self: EightDirection[T], cursor: Cursor, val: T) =
+  self[cursor.cc, cursor.dp] = T
+proc getEndPos*(self: Matrix[BlockInfo], cursor: Cursor): UsedInfo =
+  self[cursor].endPos[cursor.cc, cursor.dp]
 
 proc newBlockInfo*(base: Matrix[PietColor], x, y: int,
     color: PietColor): BlockInfo =
@@ -73,8 +81,7 @@ proc toPietColorMap*(self: Matrix[BlockInfo]): Matrix[PietColor] =
       else: result[x, y] = self[x, y].color
 
 
-proc checkAdjasts*(mat: Matrix[BlockInfo], x, y: int, color: PietColor): seq[
-    BlockInfo] =
+proc checkAdjasts*(mat: Matrix[BlockInfo], x, y: int, color: PietColor): seq[BlockInfo] =
   # color と同じ色で隣接しているものを取得
   result = @[]
   for dxdy in dxdys:
@@ -90,59 +97,55 @@ proc getNextPos*(endPos: EightDirection[UsedInfo], dp: DP, cc: CC): IntPos =
   let (x, y) = endPos[cc, dp].pos
   let (dX, dY) = dp.getdXdY()
   return (x + dX, y + dY)
-type NotVisited* = tuple[ok: bool, dp: DP, cc: CC]
-proc searchNotVisited*(mat: Matrix[BlockInfo], x, y: int, startDP: DP,
-    startCC: CC): NotVisited =
-  # 次に行ったことのない壁ではない場所にいけるかどうかだけチェック(更新はしない)
-  assert mat[x, y] != nil and mat[x, y].color < chromMax
-  var dp = startDP
-  var cc = startCC
-  result = (false, dp, cc)
+
+proc currentNextPos*(mat: Matrix[BlockInfo], cursor: Cursor): IntPos =
+  mat[cursor].endPos.getNextPos(cursor.dp, cursor.cc)
+# 次に行ったことのない壁ではない場所を探索
+proc searchNotVisited*(mat: Matrix[BlockInfo], startCursor: Cursor): Option[Cursor] =
+  var cursor = startCursor
+  assert mat[cursor] != nil and mat[cursor].color < chromMax
   for i in 0..<8:
-    let used = mat[x, y].endPos[cc, dp].used
-    let (nX, nY) = mat[x, y].endPos.getNextPos(dp, cc)
-    if not mat.isIn(nX, nY) or (mat[nX, nY] != nil and mat[nX,
-        nY].color == BlackNumber):
-      if i mod 2 == 0: cc.toggle()
-      else: dp.toggle(1)
+    let used = mat.getEndPos(cursor).used
+    let (nX, nY) = mat[cursor].endPos.getNextPos(cursor.dp, cursor.cc)
+    if not mat.isIn(nX, nY) or (mat[nX, nY] != nil and mat[nX, nY].color == BlackNumber):
+      if i mod 2 == 0: cursor.cc.toggle()
+      else: cursor.dp.toggle(1)
       continue
-    if used: return
-    return (true, dp, cc)
-  return
-proc updateUsingNextPos*(mat: var Matrix[BlockInfo], x, y: int, dp: DP,
-    cc: CC): tuple[x, y: int] =
-  # 使用済みに変更して全部更新してから返却
-  if not mat[x, y].endPos[cc, dp].used:
-    let newBlock = mat[x, y].deepCopy()
-    newBlock.endPos[cc, dp] = (true, newBlock.endPos[cc, dp].pos)
+    if used: return none(Cursor)
+    cursor.x = nX
+    cursor.y = nY
+    return some(cursor)
+  return none(Cursor)
+
+# 現在のカーソル方向を使用済みに全て更新し,返却
+proc markCurrentAndGetNextPos*(mat: var Matrix[BlockInfo], cursor: Cursor): IntPos =
+  if not mat.getEndPos(cursor).used:
+    let newBlock = mat[cursor].deepCopy()
+    newBlock.endPos[cursor.cc, cursor.dp] = (true, newBlock.endPos[cursor.cc, cursor.dp].pos)
     for b in newBlock.sameBlocks: mat.data[b] = newBlock
-  return mat[x, y].endPos.getNextPos(dp, cc)
-type NextStateResult* = tuple[ok: bool, x, y: int, dp: DP, cc: CC]
-proc toNextState*(mat: var Matrix[BlockInfo], x, y: int, startDP: DP,
-    startCC: CC): NextStateResult =
-  # 使用したことのない場所で新たに行けるならそれを返却
-  assert mat[x, y] != nil and mat[x, y].color < chromMax
-  template failed(): untyped = (false, x, y, startDP, startCC)
-  var dp = startDP
-  var cc = startCC
+  return mat.currentNextPos(cursor)
+
+# 使用したことのない場所で新たに行けるならそれを返却
+proc toNextStateAndGetNextCursor*(mat: var Matrix[BlockInfo],startCursor: Cursor): Option[Cursor] =
+  var cursor = startCursor
+  assert mat[cursor] != nil and mat[cursor].color < chromMax
   var usedDir: EightDirection[bool]
   for i in 0..<8:
-    let used = mat[x, y].endPos[cc, dp].used
-    let (nX, nY) = mat[x, y].endPos.getNextPos(dp, cc)
-    usedDir[cc, dp] = true
-    if not mat.isIn(nX, nY) or (mat[nX, nY] != nil and mat[nX,
-        nY].color == BlackNumber):
-      if i mod 2 == 0: cc.toggle()
-      else: dp.toggle(1)
+    let used = mat.getEndPos(cursor).used
+    let (nX, nY) = mat.currentNextPos(cursor)
+    usedDir[cursor.cc, cursor.dp] = true
+    if not mat.isIn(nX, nY) or (mat[nX, nY] != nil and mat[nX, nY].color == BlackNumber):
+      if i mod 2 == 0: cursor.cc.toggle()
+      else: cursor.dp.toggle(1)
       continue
-    if used: return failed
-    let newBlock = mat[x, y].deepCopy()
+    if used: return none(Cursor)
+    let newBlock = mat[cursor].deepCopy()
     for ccdp in allCCDP():
       let (ncc, ndp) = ccdp
       if not usedDir[ncc, ndp]: continue
       newBlock.endPos[ncc, ndp] = (true, newBlock.endPos[ncc, ndp].pos)
     for b in newBlock.sameBlocks: mat.data[b] = newBlock
-    return (true, nX, nY, dp, cc)
-  return failed
-
-
+    cursor.x = nX
+    cursor.y = nY
+    return some(cursor)
+  return none(Cursor)

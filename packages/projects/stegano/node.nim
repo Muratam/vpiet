@@ -6,12 +6,11 @@ import sets, hashes, tables
 
 type
   NodeObject* = object
-    val*, x*, y*: int
+    val*: int
     mat*: Matrix[BlockInfo]
-    dp*: DP
-    cc*: CC
+    cursor*: Cursor
     fund*: Stack[int]
-    decidedPos*: seq[int]     # i -> xy表記
+    decidedCursors*: seq[Cursor]
   Node* = ref NodeObject not nil
   NodeEnv* = ref object
     img*: Matrix[PietColor]
@@ -107,30 +106,24 @@ proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo],
   return update(env, c, mat)
 
 # constructors
-proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
-    fund: Stack[int], decidedPos: seq[int]): Node =
+proc newNode*(val: int, mat: Matrix[BlockInfo], cursor: Cursor,
+    fund: Stack[int], decidedCursors: seq[Cursor]): Node =
   new(result)
   result.val = val
-  result.x = x
-  result.y = y
+  result.cursor = cursor
   result.mat = mat
-  result.dp = dp
-  result.cc = cc
   result.fund = fund
-  result.decidedPos = decidedPos
+  result.decidedCursors = decidedCursors
 
 template newNodeIt*(node: Node, op: untyped): Node =
   var it {.inject.}: Node
   new(it)
   it.val = node.val
-  it.x = node.x
-  it.y = node.y
-  it.dp = node.dp
-  it.cc = node.cc
+  it.cursor = node.cursor
   op
   if it.mat == nil: it.mat = node.mat.deepCopy()
   if it.fund == nil: it.fund = node.fund.deepCopy()
-  if it.decidedPos.len == 0: it.decidedPos = node.decidedPos
+  if it.decidedCursors.len == 0: it.decidedCursors = node.decidedCursors
   it
 proc newEnv*(
     img: Matrix[PietColor],
@@ -144,8 +137,9 @@ proc newEnv*(
       var val = 0
       let state = (0, 0, c.PietColor)
       if not env.update(state, initMat, val): quit("yabee")
-      env.fronts[0][0] &= newNode(val, 0, 0, initMat, newDP(), newCC(),
-          newStack[int](), @[env.img.getI(0, 0)])
+      let cursor: Cursor = (0, 0, newDP(), newCC())
+      env.fronts[0][0] &= newNode(val, initMat, cursor, newStack[int](),
+         @[cursor])
   new(result)
   result.img = img
   result.orders = orders
@@ -228,9 +222,9 @@ proc checkIterateResult*(env: NodeEnv): bool =
       let f = front[0][j]
       echo maxes
       echo f.mat.toConsole(), f.val, "\n"
-      for p in f.decidedPos:
-        stdout.write f.mat.getX(p), "-", f.mat.getY(p), " "
-      echo ""
+      # for p in f.decidedPos:
+      #   stdout.write f.mat.getX(p), "-", f.mat.getY(p), " "
+      # echo ""
       echo "memory  :", getTotalMem() div 1024 div 1024, "MB"
     break
   if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0:
@@ -300,5 +294,5 @@ proc getResult*(env: NodeEnv): Matrix[PietColor] =
   echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
   echo env.orders
 
-proc registDecidedPos*(node: Node) =
-  node.decidedPos &= node.mat.getI(node.x, node.y)
+proc registDecidedCursor*(node: Node) =
+  node.decidedCursors &= node.cursor

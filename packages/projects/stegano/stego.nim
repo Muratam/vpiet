@@ -90,7 +90,8 @@ if isMainModule:
       # .quasiStegano2D()
     else:
       let baseImg = commandLineParams()[0].newPietMap().pietColorMap
-      const orders = getBranchedOrders() #getPietOrder()
+      # const orders = getBranchedOrders() #getPietOrder()
+      const orders = getPietOrder()
       let stegano = newEnv(
         baseImg, orders,
         maxFrontierNum = 720,
