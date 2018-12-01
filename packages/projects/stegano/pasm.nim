@@ -1,12 +1,15 @@
-
 import packages/common
 import packages/pietbase
 import nre
 import tables
 
-type PasmType* = enum
-  ExecOrder, MoveTerminate, Label, GoIf, Goto, ErrorPasmType
-type PasmOrder* = tuple[pasmType: PasmType, order: Order, args: seq[string]]
+type
+  # 外側に近い表現
+  PasmType* = enum ExecOrder, MoveTerminate, Label, GoIf, Goto, ErrorPasmType
+  PasmOrder* = tuple[pasmType: PasmType, order: Order, args: seq[string]]
+  # info : Pushのときはsize を示す
+  #      : isConnectのときは繋ぎたい場所(命令内でのindex表現)を示す
+  EmbOrder* = tuple[isConnect: bool, order: Order, info: seq[int]]
 
 proc `$`* (self: seq[seq[PasmOrder]]): string =
   result = ""
@@ -19,7 +22,6 @@ proc `$`* (self: seq[seq[PasmOrder]]): string =
         result &= $order.pasmType
       result &= " " & ($order.args) & "\n"
 
-
 proc `$`*(orders: seq[PasmOrder]): string =
   result = ""
   for order in orders:
@@ -30,6 +32,35 @@ proc `$`*(orders: seq[PasmOrder]): string =
     else: result &= $order.pasmType
     result &= " "
 
+proc srcIndex*(order: EmbOrder): int =
+  assert order.isConnect
+  assert order.info.len == 2
+  return order.info[0]
+
+proc dstIndex*(order: EmbOrder): int =
+  assert order.isConnect
+  assert order.info.len == 2
+  return order.info[1]
+
+proc getPushSize*(order: EmbOrder): int =
+  assert (not order.isConnect)
+  assert order.info.len == 1
+  return order.info[0]
+proc newPushEmbOrder*(size: int): EmbOrder =
+  assert size > 0
+  return (false, Push, @[size])
+proc newEmbOrder*(order: Order): EmbOrder = (false, order, @[])
+proc newConnectOrder*(src, dst: int): EmbOrder =
+  (true, ErrorOrder, @[src, dst])
+proc `$`*(orders: seq[EmbOrder]): string =
+  result = ""
+  for order in orders:
+    if order.isConnect:
+      result &= fmt"CONN:{order.srcIndex}->{order.dstIndex}"
+    else:
+      if order.order == Push: result &= fmt"+{order.getPushSize()}"
+      else: result &= $order.order
+    result &= " "
 
 proc interpretOrder*(orderName: string): Order =
   return case orderName.toLowerAscii():
@@ -51,7 +82,6 @@ proc interpretOrder*(orderName: string): Order =
     of "terminate": Terminate
     of "end": Terminate
     else: ErrorOrder
-
 
 proc toPasmOrder*(order: seq[string]): PasmOrder =
   let errorResult: PasmOrder = (ErrorPasmType, ErrorOrder, @[])

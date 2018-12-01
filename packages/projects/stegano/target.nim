@@ -12,7 +12,7 @@ proc currentEndPos(node: Node): EightDirection[UsedInfo] =
   node.currentBlock().endPos
 proc nextKey(t: Target, d: Key): Key =
   (t.node.fund.len() + d.fund, t.ord + d.ord)
-proc currentOrder(t: Target): PasmOrder = t.env.orders[t.ord]
+proc currentOrder(t: Target): EmbOrder = t.env.orders[t.ord]
 proc toNextState(mat: var Matrix[BlockInfo], node: Node): NextStateResult =
   mat.toNextState(node.x, node.y, node.dp, node.cc)
 # storedValueや過去の制約をチェックして,更新できれば新しい結果を返す
@@ -49,18 +49,6 @@ proc tryUpdateNotVisited(t: Target, color: PietColor, dKey: Key,
   if onlyNotUsedCCDP and t.node.mat[nx, ny].endPos[cc, dp].used: return false
   return true
 
-# 偶然同じ画像が作られてしまうことがあるので,確認しつつ上位の値を保存
-proc store(env: NodeEnv, node: Node, ord: int) =
-  let k: Key = (node.fund.len(), ord)
-  if k.fund >= env.maxFundLevel: return
-  if env.getStoredWorstVal(k) <= node.val: return
-  let hashing = node.mat.hashing
-  if hashing in env.stored.get(k): return
-  env.nexts.get(k).push(node)
-  env.stored.get(k).incl(hashing)
-  if env.nexts.get(k).len() > env.getMaxFunds(k):
-    # exclしなくてもいいかな
-    discard env.nexts.get(k).pop()
 
 # 8方向とも全て塞がっているか確認し,そうであれば+1に値を保存
 proc checkTerminate(t: Target) =
@@ -147,11 +135,11 @@ proc doOrder(t: Target) =
   let here = t.node.currentBlock()
   if here.color >= chromMax: return
   if t.node.fund.len() > 0: return
-  let order = t.currentOrder.order
-  if order == Terminate: return
-  if order == Push and
-    t.currentOrder.args[0].parseInt() != here.sameBlocks.len(): return
-  t.decide(order, (0, 1))
+  if t.currentOrder.order == Terminate: return
+  if t.currentOrder.order == Push and
+     t.currentOrder.getPushSize() != here.sameBlocks.len():
+    return
+  t.decide(t.currentOrder.order, (0, 1))
 
 # 行き先に白を置いてみる
 proc goWhite(t: Target) =
@@ -176,7 +164,7 @@ proc goWhite(t: Target) =
         it.y = ny
       store(t.env, nextNode, t.ord)
       return
-    doAssert chromMax == WhiteNumber
+    assert chromMax == WhiteNumber
     for c in 0..chromMax:
       let (ok, newVal, newMat) = t.tryUpdate((nx, ny, c.PietColor), (0, 0))
       if not ok: continue

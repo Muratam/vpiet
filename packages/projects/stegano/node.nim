@@ -11,16 +11,18 @@ type
     dp*: DP
     cc*: CC
     fund*: Stack[int]
+    #decidedPos*: seq[int16]   # i -> xy表記
   Node* = ref NodeObject not nil
   NodeEnv* = ref object
     img*: Matrix[PietColor]
-    orders*: seq[PasmOrder]
+    orders*: seq[EmbOrder]
     maxFrontierNum*: int
     maxFundLevel*: int
     maxTrackBackOrderLen*: int
     fronts*: seq[seq[seq[Node]]]
     nexts*: seq[seq[BinaryHeap[Node]]]
     stored*: seq[seq[HashSet[Hash]]]
+    skipStored*: seq[seq[HashSet[Hash]]]
     maxNonNilFrontIndex*: int
     maxFunds*: seq[int]
     completedMin*: int
@@ -62,7 +64,7 @@ proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo]): bool =
         y < e.rightL.pos.y: e.rightL.update()
   template syncSameBlocks(blockInfo: BlockInfo) =
     for index in blockInfo.sameBlocks: mat.data[index] = blockInfo
-  doAssert mat[c.x, c.y] == nil
+  assert mat[c.x, c.y] == nil
   if c.color == WhiteNumber:
     mat[c.x, c.y] = whiteBlockInfo
     return true
@@ -129,7 +131,7 @@ template newNodeIt*(node: Node, op: untyped): Node =
   it
 proc newEnv*(
     img: Matrix[PietColor],
-    orders: seq[PasmOrder],
+    orders: seq[EmbOrder],
     maxFrontierNum: int = 720,
     maxFundLevel: int = 6,
     maxTrackBackOrderLen: int = 30): NodeEnv =
@@ -165,6 +167,8 @@ proc prepare*(env: NodeEnv) =
   # top()が一番雑魚
   env.stored = newSeqWith(env.orders.len()+1, newSeqWith(env.maxFundLevel,
       initSet[Hash]()))
+  env.skipStored = newSeqWith(env.orders.len()+1, newSeqWith(env.maxFundLevel,
+      initSet[Hash]()))
   env.maxNonNilFrontIndex = toSeq(0..<env.fronts.len()).filterIt(env.fronts[
       it].mapIt(it.len()).sum() > 0).max()
   env.maxFunds = toSeq(0..<env.maxFundLevel).mapIt(env.maxFrontierNum div (
@@ -177,10 +181,27 @@ proc getMaxFunds*(env: NodeEnv, k: Key): int =
 proc getStoredWorstVal*(env: NodeEnv, k: Key): int =
   # 命令を実行できる人の方が偉いので強い重みをつける()
   if k.fund >= env.maxFundLevel: return -1 # 越えたときも-1で簡易的に弾く
-  if env.nexts.get(k).len() < env.getMaxFunds(k): return min(EPS,
-      env.completedMin)
-  if env.nexts.get(k).len() == 0: return min(EPS, env.completedMin)
+  if env.nexts.get(k).len() < env.getMaxFunds(k):
+    return min(EPS, env.completedMin)
+  if env.nexts.get(k).len() == 0:
+    return min(EPS, env.completedMin)
   return min(env.nexts.get(k).top().val, env.completedMin)
+# 偶然同じ画像が作られてしまうことがあるので,確認しつつ上位の値を保存
+proc store*(env: NodeEnv, node: Node, ord: int) =
+  let k: Key = (node.fund.len(), ord)
+  if k.fund >= env.maxFundLevel: return
+  if env.getStoredWorstVal(k) <= node.val: return
+  # let skipHashing = node.mat.skipHashing(10)
+  # if skipHashing in env.skipStored.get(k): return
+  let hashing = node.mat.hashing
+  if hashing in env.stored.get(k): return
+  env.nexts.get(k).push(node)
+  env.stored.get(k).incl(hashing)
+  # env.skipStored.get(k).incl(skipHashing)
+  if env.nexts.get(k).len() > env.getMaxFunds(k):
+    # exclしなくてもいいかな
+    discard env.nexts.get(k).pop()
+
 proc setupNextFronts*(env: NodeEnv) =
   let nextItems = (proc(): seq[seq[seq[Node]]] =
     result = newSeqWith(env.orders.len()+1, newSeqWith(env.maxFundLevel,
@@ -200,15 +221,8 @@ proc checkIterateResult*(env: NodeEnv): bool =
     if front[0].len() == 0: continue
     # 最後のプロセス省略
     for j in 0..<1.min(front[0].len()):
-      # echo fronts.mapIt(it.mapIt(it.len()))
-      # echo stored.mapIt(it.mapIt(it.card).sum())
-      # echo nextItems.mapIt(it.mapIt(it.len()))
-      # echo nextItems.mapIt(it.mapIt(it.mapIt(it.val)).filterIt(it.len() > 0).mapIt([it.max(),it.min()]))
-      # echo front[0].mat.newGraph().mapIt(it.orderAndSizes.mapIt(it.pasmType))
-      # stdout.write progress;stdout.flushFile
       echo maxes
       echo front[0][j].mat.toConsole(), front[0][0].val, "\n"
-      # echo front[0][j].mat.toPietColorMap().newGraph().mapIt(it.orderAndSizes.mapIt(it.pasmType))
       echo "memory  :", getTotalMem() div 1024 div 1024, "MB"
     break
   if maxes[^1] > 0 and maxes[^2] == 0 and maxes[^3] == 0:
@@ -277,3 +291,4 @@ proc getResult*(env: NodeEnv): Matrix[PietColor] =
       it.order))
   echo result.newGraph().mapIt(it.orderAndSizes.mapIt(it.order))
   echo env.orders
+

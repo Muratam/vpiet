@@ -1,5 +1,5 @@
 import packages/[common, pietbase, frompiet, curse]
-import pasm, steganoutil
+import steganoutil
 import sets, hashes, tables
 
 
@@ -33,13 +33,21 @@ let whiteBlockInfo* = newBlockInfo(nil, -1, -1, WhiteNumber)
 let blackBlockInfo* = newBlockInfo(nil, -1, -1, BlackNumber)
 
 proc hashing*(mat: Matrix[BlockInfo]): Hash =
+  const nilhash = hash(-1)
   # 速度のために正確さを犠牲にしたらこうなるが...
   # for d in mat.data:
   #   result += result shl 5 + (if d == nil: nilhash else: hash(d.color))
-  const nilhash = hash(-1)
   for d in mat.data:
     result = result !& (if d == nil: nilhash else: hash(d.color))
   result = !$result
+
+proc skipHashing*(mat: Matrix[BlockInfo], interval: int = 4): Hash =
+  const nilhash = hash(-1)
+  var i = 0
+  while i < mat.data.len():
+    let d = mat.data[i]
+    result += result shl 5 + (if d == nil: nilhash else: hash(d.color))
+    i += interval
 
 proc deepCopy*(x: BlockInfo): BlockInfo =
   # コピーコンストラクタはおそすぎるので直代入
@@ -86,7 +94,7 @@ type NotVisited* = tuple[ok: bool, dp: DP, cc: CC]
 proc searchNotVisited*(mat: Matrix[BlockInfo], x, y: int, startDP: DP,
     startCC: CC): NotVisited =
   # 次に行ったことのない壁ではない場所にいけるかどうかだけチェック(更新はしない)
-  doAssert mat[x, y] != nil and mat[x, y].color < chromMax
+  assert mat[x, y] != nil and mat[x, y].color < chromMax
   var dp = startDP
   var cc = startCC
   result = (false, dp, cc)
@@ -113,7 +121,7 @@ type NextStateResult* = tuple[ok: bool, x, y: int, dp: DP, cc: CC]
 proc toNextState*(mat: var Matrix[BlockInfo], x, y: int, startDP: DP,
     startCC: CC): NextStateResult =
   # 使用したことのない場所で新たに行けるならそれを返却
-  doAssert mat[x, y] != nil and mat[x, y].color < chromMax
+  assert mat[x, y] != nil and mat[x, y].color < chromMax
   template failed(): untyped = (false, x, y, startDP, startCC)
   var dp = startDP
   var cc = startCC
