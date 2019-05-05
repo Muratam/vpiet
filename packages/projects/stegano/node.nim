@@ -3,7 +3,6 @@ import packages/[common, pietbase, frompiet, curse]
 import pasm, steganoutil, blockinfo
 import sets, hashes, tables
 
-
 type
   NodeObject* = object
     val*, x*, y*: int
@@ -11,6 +10,7 @@ type
     dp*: DP
     cc*: CC
     fund*: Stack[int]
+    hash*: int
   Node* = ref NodeObject not nil
   NodeEnv* = ref object
     img*: Matrix[PietColor]
@@ -24,6 +24,7 @@ type
     maxNonNilFrontIndex*: int
     maxFunds*: seq[int]
     completedMin*: int
+    rollingHashBaseSeq*:seq[int]
   Codel* = tuple[x, y: int, color: PietColor]
   Key* = tuple[fund, ord: int]
 
@@ -32,12 +33,21 @@ proc width*(env: NodeEnv): int = env.img.width
 proc height*(env: NodeEnv): int = env.img.height
 proc get*[T](a: var seq[seq[T]], k: Key): var T = a[k.ord][k.fund]
 
+# rollinghash
+const modRH = 9007199254740997.int # 2^53+5
+const baseRH = 23 # 20色+1に余裕をもって
+proc initRollingHashBaseSeq*(size:int): seq[int] =
+  result = newSeq[int](size+1)
+  result[0] = 1
+  for i in 0..<size: result[i+1] = (result[i] * baseRH) mod modRH
+proc getUpdatedHash*(env:NodeEnv,node:Node,x,y:int) : int =
+  return (node.hash + env.rollingHashBaseSeq[x+y*env.width] * node.mat[x,y].color.int) mod modRH
 
 # 1コーデル更新 val(add distance),mat(update to the color)
-proc update*(val: var int, color, baseColor: PietColor) = val += distance(
-    color, baseColor)
-proc update*(env: NodeEnv, c: Codel, val: var int) = val.update(c.color,
-    env.img[c.x, c.y])
+proc update*(val: var int, color, baseColor: PietColor) =
+  val += distance(color, baseColor)
+proc update*(env: NodeEnv, c: Codel, val: var int) =
+  val.update(c.color,env.img[c.x, c.y])
 proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo]): bool =
   proc canUpdateEndPos(e: var EightDirection[UsedInfo], x, y: int): bool =
     # 使用済みのところを更新してしまうと駄目(false)
@@ -99,14 +109,12 @@ proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo]): bool =
   for l in 1..<adjasts.len(): adjasts[l].connect()
   zeroBlock.syncSameBlocks()
   return true
-proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo],
-    val: var int): bool =
+proc update*(env: NodeEnv, c: Codel, mat: var Matrix[BlockInfo],val: var int): bool =
   val.update(c.color, env.img[c.x, c.y])
   return update(env, c, mat)
 
 # constructors
-proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
-    fund: Stack[int]): Node =
+proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,fund: Stack[int],hash:int=0): Node =
   new(result)
   result.val = val
   result.x = x
@@ -115,6 +123,7 @@ proc newNode*(val, x, y: int, mat: Matrix[BlockInfo], dp: DP, cc: CC,
   result.dp = dp
   result.cc = cc
   result.fund = fund
+  result.hash = hash
 template newNodeIt*(node: Node, op: untyped): Node =
   var it {.inject.}: Node
   new(it)
@@ -123,6 +132,7 @@ template newNodeIt*(node: Node, op: untyped): Node =
   it.y = node.y
   it.dp = node.dp
   it.cc = node.cc
+  it.hash = node.hash
   op
   if it.mat == nil: it.mat = node.mat.deepCopy()
   if it.fund == nil: it.fund = node.fund.deepCopy()
@@ -151,6 +161,7 @@ proc newEnv*(
       newSeq[Node]()))
   result.setupFirstFront()
   result.completedMin = EPS
+  result.rollingHashBaseSeq = initRollingHashBaseSeq(img.width * img.height)
   doAssert result.width < int16.high and result.height < int16.high
 
 # front next stored を各iterate-progress毎に更新

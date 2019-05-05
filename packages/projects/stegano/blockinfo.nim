@@ -83,9 +83,8 @@ proc getNextPos*(endPos: EightDirection[UsedInfo], dp: DP, cc: CC): IntPos =
   let (dX, dY) = dp.getdXdY()
   return (x + dX, y + dY)
 type NotVisited* = tuple[ok: bool, dp: DP, cc: CC]
-proc searchNotVisited*(mat: Matrix[BlockInfo], x, y: int, startDP: DP,
-    startCC: CC): NotVisited =
-  # 次に行ったことのない壁ではない場所にいけるかどうかだけチェック(更新はしない)
+# 次に「行ったことのない壁ではない場所」にいけるかどうかだけチェック(更新はしない)
+proc searchNotVisited*(mat: Matrix[BlockInfo], x, y: int, startDP: DP, startCC: CC): NotVisited =
   doAssert mat[x, y] != nil and mat[x, y].color < chromMax
   var dp = startDP
   var cc = startCC

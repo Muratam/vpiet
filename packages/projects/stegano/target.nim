@@ -27,7 +27,7 @@ proc tryUpdate(t: Target, c: Codel, dKey: Key):
   var newVal = t.node.val
   if not t.env.update(c, newMat, newVal): return mistaken
   return (true, newVal, newMat)
-# 未踏の地 でかつ storedValueや過去の制約を満たすかどうかチェック
+# 未踏の地 でかつ storedValueや過去の制約を満たすかどうかチェック。Matrixを更新しなくてよいのが強い。
 proc tryUpdateNotVisited(t: Target, color: PietColor, dKey: Key,
     onlyNil: bool = false,
     onlySameColor: bool = false,
@@ -54,7 +54,7 @@ proc store(env: NodeEnv, node: Node, ord: int) =
   let k: Key = (node.fund.len(), ord)
   if k.fund >= env.maxFundLevel: return
   if env.getStoredWorstVal(k) <= node.val: return
-  let hashing = node.mat.hashing
+  let hashing = node.hash.hash()
   if hashing in env.stored.get(k): return
   env.nexts.get(k).push(node)
   env.stored.get(k).incl(hashing)
@@ -102,6 +102,7 @@ proc extendBlock(t: Target) =
         it.x = nx
         it.y = ny
         it.mat = newMat
+        it.hash = t.env.getUpdatedHash(it,nx,ny)
       store(t.env, nextNode, t.ord)
       if t.currentOrder.order == Terminate:
         (t.env, nextNode, t.ord).checkTerminate()
@@ -111,11 +112,12 @@ proc decide(t: Target, order: Order, dKey: Key,
     callback: proc(_: var Node): bool = (proc(_: var Node): bool = true)) =
   let here = t.node.currentBlock
   let color = here.color.getNextColor(order).PietColor
-  if not t.tryUpdateNotVisited(color, dKey, onlySameColor = true,
-      onlyNotUsedCCDP = true): return
+  if not t.tryUpdateNotVisited(color, dKey, onlySameColor = true,onlyNotUsedCCDP = true):
+    return
   var newMat = t.node.mat.deepCopy()
   let (ok, nx, ny, dp, cc) = newMat.toNextState(t.node)
   if not ok: quit("yabee")
+  # 新しく色を更新しなくても命令を実行できた場合。
   if newMat[nx, ny] != nil:
     let next = newMat[nx, ny]
     if next.color != color or next.endPos[cc, dp].used: quit("yabee")
@@ -130,7 +132,8 @@ proc decide(t: Target, order: Order, dKey: Key,
     return
   var newVal = t.node.val
   if not t.env.update((nx, ny, color), newMat, newVal): return
-  var nextNode = newNode(newVal, nx, ny, newMat, dp, cc, t.node.fund.deepCopy())
+  var nextNode = newNode(newVal, nx, ny, newMat, dp, cc, t.node.fund.deepCopy(),t.node.hash)
+  nextNode.hash = t.env.getUpdatedHash(nextNode,nx,ny)
   if order == Push: newMat[t.node.x, t.node.y].sizeFix = true
   if not nextNode.callback(): return
   store(t.env, nextNode, t.ord+dKey.ord)
@@ -157,6 +160,7 @@ proc doOrder(t: Target) =
 proc goWhite(t: Target) =
   let here = t.node.currentBlock()
   if here.color == WhiteNumber:
+    # 白を引き伸ばす場合
     let (dx, dy) = t.node.dp.getdXdY()
     let (nx, ny) = (t.node.x+dx, t.node.y+dy)
     if not t.node.mat.isIn(nx, ny): return
@@ -185,6 +189,7 @@ proc goWhite(t: Target) =
         it.x = nx
         it.y = ny
         it.mat = newMat
+        it.hash = t.env.getUpdatedHash(it,nx,ny)
       store(t.env, nextNode, t.ord)
     return
   else:
@@ -196,24 +201,29 @@ proc goWhite(t: Target) =
     if newMat[nx, ny] != nil: quit("yabee")
     if not t.env.update((nx, ny, WhiteColor), newMat, newVal): return
     let nextNode = newNode(newVal, nx, ny, newMat, dp, cc,
-        t.node.fund.deepCopy())
+        t.node.fund.deepCopy(),t.node.hash)
+    nextNode.hash = t.env.getUpdatedHash(nextNode,nx,ny)
     store(t.env, nextNode, t.ord)
 
 # 行き先に黒を置いてみる
 proc pushBlack(t: Target) =
   let here = t.node.currentBlock
   if here.color >= chromMax: return # 白で壁にぶつからないように
+  # 次の行き先に黒を配置できなければ諦める
   if not t.tryUpdateNotVisited(BlackNumber, (0, 0), onlyNil = true): return
+  # 次の行き先に黒を配置できるので配置
   let (ok, dp, cc) = t.node.searchNotVisited()
   if not ok: quit("yabee")
   var newMat = t.node.mat.deepCopy()
+  # nx,ny の位置に 黒ブロックを配置
   let (nx, ny) = newMat[t.node.x, t.node.y].endPos.getNextPos(dp, cc)
-  var newVal = t.node.val
   if newMat[nx, ny] != nil: quit("yabee")
+  var newVal = t.node.val
   if not t.env.update((nx, ny, BlackColor), newMat, newVal): return
   let nextNode = t.node.newNodeIt:
     it.val = newVal
     it.mat = newMat
+    it.hash = t.env.getUpdatedHash(it,nx,ny)
   store(t.env, nextNode, t.ord)
 
 # 余剰分を変更するような操作
