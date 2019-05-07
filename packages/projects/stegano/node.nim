@@ -41,7 +41,7 @@ proc initRollingHashBaseSeq*(size:int): seq[int] =
   result[0] = 1
   for i in 0..<size: result[i+1] = (result[i] * baseRH) mod modRH
 proc getUpdatedHash*(env:NodeEnv,node:Node,x,y:int) : int =
-  return (node.hash + env.rollingHashBaseSeq[x+y*env.width] * node.mat[x,y].color.int) mod modRH
+  return (node.hash + env.rollingHashBaseSeq[x+y*env.width] * (1+node.mat[x,y].color.int)) mod modRH
 
 # 1コーデル更新 val(add distance),mat(update to the color)
 proc update*(val: var int, color, baseColor: PietColor) =
